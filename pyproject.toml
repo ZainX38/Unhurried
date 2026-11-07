@@ -1,0 +1,26 @@
+[project]
+name = "unhurried"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "ZainX38", email = "zainchema2007@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162.2",
+    "numpy>=2.5.4",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+unhurried = "unhurried:main"
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
