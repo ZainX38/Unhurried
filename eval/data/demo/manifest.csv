@@ -1,4 +1,4 @@
-file,group,line,slot,transcript,true_end_ms,notes
-demo/A1_fluent.wav,fluent,A1,account_number,My account number is 4 5 2 1 8 8 3 0,7671,
-demo/A1_stammered.wav,stammered,A1,account_number,My account number is 4 5 2 1 8 8 3 0,10743,block_start_ms=2430;burst_ms=124;silence_ms=2948
-demo/P_A2.wav,pauses,P_A2,account_number,It's hang on 7 3 0 9 1 1 6 4,11100,pauses_over_500ms=3
+file,group,line,slot,transcript,true_end_ms,piece_ends_ms,piece_texts,notes
+demo/A1_fluent.wav,fluent,A1,account_number,My account number is 4 5 2 1 8 8 3 0,7671,2220;4940;7671,My account number is|4 5 2 1|8 8 3 0,
+demo/A1_stammered.wav,stammered,A1,account_number,My account number is 4 5 2 1 8 8 3 0,10743,2220;8012;10743,My account number is|4 5 2 1|8 8 3 0,block_start_ms=2430;burst_ms=124;silence_ms=2948
+demo/P_A2.wav,pauses,P_A2,account_number,It's hang on 7 3 0 9 1 1 6 4,11100,,,pauses_over_500ms=3

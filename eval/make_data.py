@@ -10,6 +10,11 @@ Three groups, each clip with an exact `true_end_ms` (where the answer really end
              before the digit/date piece, 3 variants per line
 - pauses     the single-take P_* recordings with their real thinking pauses
 
+Fluent and stammered rows also list where each piece's speech ends and what
+was said in it (`piece_ends_ms`, `piece_texts`), so the harness can reveal an
+"oracle transcript" piece by piece (ticket 05). P_* rows leave both empty:
+there is no piece timing inside a single take, so they run timing-only.
+
 The full design (and why) is in issues/unhurried-demo/issues/02-test-data.md,
 under "Design notes". Everything random comes from a fixed seed, so running this
 twice gives byte-identical files.
@@ -55,7 +60,10 @@ VARIANTS = 3               # stammered variants per line
 BLOCK_AT_START = {"C1"}
 
 DATA_DIR = Path(__file__).parent / "data"
-MANIFEST_COLUMNS = ["file", "group", "line", "slot", "transcript", "true_end_ms", "notes"]
+MANIFEST_COLUMNS = ["file", "group", "line", "slot", "transcript", "true_end_ms",
+                    "piece_ends_ms", "piece_texts", "notes"]
+PIECE_SEP = "|"            # separates piece texts in lines.csv and the manifest
+PIECE_END_SEP = ";"        # separates piece end times in the manifest
 
 # Demo samples committed for the ticket 08 "sample caller": (source clip, demo file name).
 DEMO_CLIPS = [
@@ -74,6 +82,7 @@ class Line:
     slot: str        # account_number | date_of_birth | reason | confirm
     pieces: int      # number of piece files (1 for P_* takes)
     text: str        # what was said, without pause marks
+    piece_texts: tuple[str, ...]  # what was said in each piece; joined with spaces they give `text`
 
 
 @dataclass(frozen=True)
@@ -204,31 +213,37 @@ def add_noise_floor(audio: np.ndarray, clip_name: str, seed: int) -> np.ndarray:
 
 # --- Groups ----------------------------------------------------------------------------
 
-def build_fluent(pieces: list[Piece], gaps_ms: list[int]) -> tuple[np.ndarray, int]:
-    """Join trimmed pieces with the given gaps. Returns (audio, true_end in samples)."""
+def build_fluent(pieces: list[Piece], gaps_ms: list[int]) -> tuple[np.ndarray, list[int]]:
+    """Join trimmed pieces with the given gaps.
+
+    Returns (audio, piece_ends): where each piece's speech ends, in samples.
+    The last one is the true end.
+    """
     clip = ClipBuilder()
     clip.silence(LEAD_MS)
-    last_end = 0
+    piece_ends = []
     for i, piece in enumerate(pieces):
         if i > 0:
             clip.silence(gaps_ms[i - 1])
         start = clip.place(piece.audio)
-        last_end = start + piece.speech_end
-    return clip.finish(last_end), last_end
+        piece_ends.append(start + piece.speech_end)
+    return clip.finish(piece_ends[-1]), piece_ends
 
 
 def build_stammered(
     pieces: list[Piece], gaps_ms: list[int], block_before: int, burst_ms: int, silence_ms: int
-) -> tuple[np.ndarray, int, int]:
+) -> tuple[np.ndarray, list[int], int]:
     """Fluent join plus a Block before piece index `block_before`.
 
     The Block is a burst (the first `burst_ms` of that piece, from its speech
     onset) followed by `silence_ms` of silence; then the piece plays in full.
-    Returns (audio, true_end, block_start), the last two in samples.
+    Returns (audio, piece_ends, block_start), the last two in samples. The burst
+    is not a piece: it is a fragment, so it adds no end and no text.
     """
     clip = ClipBuilder()
     clip.silence(LEAD_MS)
-    last_end = block_start = 0
+    piece_ends = []
+    block_start = 0
     for i, piece in enumerate(pieces):
         if i > 0:
             clip.silence(gaps_ms[i - 1])
@@ -237,8 +252,8 @@ def build_stammered(
             block_start = clip.place(piece.audio[onset : onset + ms_to_samples(burst_ms)])
             clip.silence(silence_ms)
         start = clip.place(piece.audio)
-        last_end = start + piece.speech_end
-    return clip.finish(last_end), last_end, block_start
+        piece_ends.append(start + piece.speech_end)
+    return clip.finish(piece_ends[-1]), piece_ends, block_start
 
 
 def build_pause_take(x: np.ndarray, name: str) -> tuple[np.ndarray, int, int]:
@@ -258,10 +273,19 @@ def build_pause_take(x: np.ndarray, name: str) -> tuple[np.ndarray, int, int]:
 # --- Driver ---------------------------------------------------------------------------------
 
 def load_lines(recordings: Path) -> list[Line]:
-    """Read lines.csv and check every piece file it promises exists."""
+    """Read lines.csv and check every piece file it promises exists, and that the
+    piece texts match the piece count and add up to the line's text."""
     with open(recordings / "lines.csv", newline="", encoding="utf-8") as f:
-        lines = [Line(r["line"], r["slot"], int(r["pieces"]), r["text"]) for r in csv.DictReader(f)]
+        rows = list(csv.DictReader(f))
+    if rows and "piece_texts" not in rows[0]:
+        raise ValueError("lines.csv has no piece_texts column (pieces separated by '|')")
+    lines = [Line(r["line"], r["slot"], int(r["pieces"]), r["text"], tuple(r["piece_texts"].split(PIECE_SEP)))
+             for r in rows]
     for ln in lines:
+        if len(ln.piece_texts) != ln.pieces:
+            raise ValueError(f"{ln.line}: {ln.pieces} piece(s) but {len(ln.piece_texts)} piece text(s)")
+        if " ".join(ln.piece_texts) != ln.text:
+            raise ValueError(f"{ln.line}: piece texts {ln.piece_texts} don't join to {ln.text!r}")
         for path in piece_paths(recordings, ln):
             if not path.exists():
                 raise FileNotFoundError(f"lines.csv lists {ln.line} with {ln.pieces} piece(s) but {path} is missing")
@@ -286,10 +310,15 @@ def build(recordings: Path, data_dir: Path, seed: int = SEED) -> list[dict]:
 
     rows: list[dict] = []
 
-    def emit(rel: str, group: str, ln: Line, audio: np.ndarray, true_end: int, notes: str) -> None:
+    def emit(rel: str, group: str, ln: Line, audio: np.ndarray, true_end: int, notes: str,
+             piece_ends: list[int] | None = None) -> None:
+        """piece_ends=None: no piece timing (P_* takes), so both piece columns stay empty."""
         write_wav(data_dir / rel, add_noise_floor(audio, rel, seed))
         rows.append({"file": rel, "group": group, "line": ln.line, "slot": ln.slot,
-                     "transcript": ln.text, "true_end_ms": samples_to_ms(true_end), "notes": notes})
+                     "transcript": ln.text, "true_end_ms": samples_to_ms(true_end),
+                     "piece_ends_ms": PIECE_END_SEP.join(str(samples_to_ms(e)) for e in piece_ends or []),
+                     "piece_texts": PIECE_SEP.join(ln.piece_texts) if piece_ends else "",
+                     "notes": notes})
 
     for ln in lines:  # lines.csv order keeps the random draws stable
         paths = piece_paths(recordings, ln)
@@ -303,17 +332,17 @@ def build(recordings: Path, data_dir: Path, seed: int = SEED) -> list[dict]:
 
         # fluent: one draw per gap; stammered reuses these so only the Block differs.
         gaps = [rng.randint(*GAP_MS) for _ in range(len(pieces) - 1)]
-        audio, true_end = build_fluent(pieces, gaps)
-        emit(f"clips/fluent/{ln.line}.wav", "fluent", ln, audio, true_end, "")
+        audio, piece_ends = build_fluent(pieces, gaps)
+        emit(f"clips/fluent/{ln.line}.wav", "fluent", ln, audio, piece_ends[-1], "", piece_ends)
 
         # stammered: Block before piece 2 (index 1), or at the very start for C1.
         block_before = 0 if ln.line in BLOCK_AT_START else 1
         for v in range(1, VARIANTS + 1):
             burst = rng.randint(*BURST_MS)
             silence = rng.randint(*BLOCK_SILENCE_MS)
-            audio, true_end, block_start = build_stammered(pieces, gaps, block_before, burst, silence)
+            audio, piece_ends, block_start = build_stammered(pieces, gaps, block_before, burst, silence)
             notes = f"block_start_ms={samples_to_ms(block_start)};burst_ms={burst};silence_ms={silence}"
-            emit(f"clips/stammered/{ln.line}_v{v}.wav", "stammered", ln, audio, true_end, notes)
+            emit(f"clips/stammered/{ln.line}_v{v}.wav", "stammered", ln, audio, piece_ends[-1], notes, piece_ends)
 
     write_manifest(data_dir / "manifest.csv", rows)
     write_demo(data_dir, rows)

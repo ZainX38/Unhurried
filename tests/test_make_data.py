@@ -44,10 +44,10 @@ def fake_recordings(root: Path) -> Path:
     write_wav(rec / "P_A2.wav", np.concatenate(
         [zeros(1000), tone(300), zeros(1200), tone(300), zeros(800), tone(300), zeros(900)]))
     (rec / "lines.csv").write_text(
-        "line,slot,pieces,text\n"
-        "A1,account_number,3,My account number is 4 5 2 1 8 8 3 0\n"
-        "C1,confirm,1,Yes\n"
-        "P_A2,account_number,1,It's hang on 7 3 0 9 1 1 6 4\n",
+        "line,slot,pieces,text,piece_texts\n"
+        "A1,account_number,3,My account number is 4 5 2 1 8 8 3 0,My account number is|4 5 2 1|8 8 3 0\n"
+        "C1,confirm,1,Yes,Yes\n"
+        "P_A2,account_number,1,It's hang on 7 3 0 9 1 1 6 4,It's hang on 7 3 0 9 1 1 6 4\n",
         encoding="utf-8",
     )
     return rec
@@ -166,6 +166,59 @@ def test_inserted_silence_is_noise_floor_not_digital_zero(tmp_path: Path) -> Non
     assert abs(level_db - md.NOISE_FLOOR_DB) < 3
 
 
+# --- piece ends and texts (oracle transcript, ticket 05) ---------------------------------------
+
+def piece_ends(row: dict) -> list[int]:
+    return [int(e) for e in row["piece_ends_ms"].split(";")]
+
+
+def test_fluent_lists_each_piece_end_and_text(tmp_path: Path) -> None:
+    out, rows = build_fake(tmp_path)
+    row = next(r for r in rows if r["file"] == "clips/fluent/A1.wav")
+    ends = piece_ends(row)
+    assert len(ends) == 3
+    assert ends == sorted(ends)
+    assert ends[-1] == row["true_end_ms"]
+    assert row["piece_texts"] == "My account number is|4 5 2 1|8 8 3 0"
+    # Piece 1 is 400 ms of speech starting 30 ms (margin) after the 500 ms lead.
+    assert ends[0] == md.LEAD_MS + 30 + 400
+
+
+def test_stammered_piece_ends_shift_by_the_block_after_it(tmp_path: Path) -> None:
+    out, rows = build_fake(tmp_path)
+    fluent = piece_ends(next(r for r in rows if r["file"] == "clips/fluent/A1.wav"))
+    row = next(r for r in rows if r["file"] == "clips/stammered/A1_v1.wav")
+    n = notes(row)
+    block = n["burst_ms"] + n["silence_ms"]
+    # Block goes before piece 2: piece 1 unchanged, pieces 2 and 3 later by burst + silence.
+    # The burst is a fragment, not a piece: still 3 ends, 3 texts.
+    assert piece_ends(row) == [fluent[0], fluent[1] + block, fluent[2] + block]
+    assert row["piece_texts"] == "My account number is|4 5 2 1|8 8 3 0"
+
+
+def test_pause_takes_have_no_piece_timing(tmp_path: Path) -> None:
+    _, rows = build_fake(tmp_path)
+    row = next(r for r in rows if r["group"] == "pauses")
+    assert (row["piece_ends_ms"], row["piece_texts"]) == ("", "")
+
+
+def test_piece_texts_must_match_the_piece_count(tmp_path: Path) -> None:
+    rec = fake_recordings(tmp_path)
+    csv_path = rec / "lines.csv"
+    csv_path.write_text(csv_path.read_text(encoding="utf-8").replace("4 5 2 1|8 8 3 0", "4 5 2 1 8 8 3 0"),
+                        encoding="utf-8")
+    with pytest.raises(ValueError, match="3 piece\\(s\\) but 2 piece text"):
+        md.build(rec, tmp_path / "out")
+
+
+def test_piece_texts_must_join_to_the_line_text(tmp_path: Path) -> None:
+    rec = fake_recordings(tmp_path)
+    csv_path = rec / "lines.csv"
+    csv_path.write_text(csv_path.read_text(encoding="utf-8").replace("|8 8 3 0", "|8 8 3 1"), encoding="utf-8")
+    with pytest.raises(ValueError, match="don't join"):
+        md.build(rec, tmp_path / "out")
+
+
 # --- reproducibility and outputs -----------------------------------------------------------
 
 def test_rerun_gives_identical_files(tmp_path: Path) -> None:
@@ -194,5 +247,11 @@ def test_real_recordings_build_the_full_set(tmp_path: Path) -> None:
         manifest = list(csv.DictReader(f))
     assert list(manifest[0]) == md.MANIFEST_COLUMNS
     assert len(manifest) == 44
+    for r in manifest:
+        if r["group"] == "pauses":
+            assert r["piece_ends_ms"] == ""
+        else:
+            assert int(r["piece_ends_ms"].split(";")[-1]) == int(r["true_end_ms"]), r["file"]
+            assert " ".join(r["piece_texts"].split("|")) == r["transcript"], r["file"]
     assert sorted(p.name for p in (tmp_path / "demo").iterdir()) == [
         "A1_fluent.wav", "A1_stammered.wav", "P_A2.wav", "manifest.csv"]
