@@ -50,6 +50,15 @@ def is_digit_token(w: str) -> bool:
     return w in DIGIT_WORDS or w.isdigit()
 
 
+def is_digit_homophone(words: list[str], i: int) -> bool:
+    """words[i] is a homophone used as a digit: a neighbour is a real digit ("five to one", not "looking for")."""
+    if words[i] not in HOMOPHONES:
+        return False
+    before = words[i - 1] if i > 0 else ""
+    after = words[i + 1] if i + 1 < len(words) else ""
+    return is_digit_token(before) or is_digit_token(after)
+
+
 def count_digits(words: list[str]) -> int:
     """Digits heard so far: spoken digit words, each numeral character ("4521" adds 4),
     and "double"/"triple" before a single digit ("double eight" adds 2)."""
@@ -63,10 +72,7 @@ def count_digits(words: list[str]) -> int:
         elif w in DIGIT_WORDS:
             total += 1
         elif w in HOMOPHONES:
-            # Only a digit if a neighbour is a real digit: "five to one", not "looking for".
-            before = words[i - 1] if i > 0 else ""
-            after = words[i + 1] if i + 1 < len(words) else ""
-            if is_digit_token(before) or is_digit_token(after):
+            if is_digit_homophone(words, i):
                 total += 1
         else:
             total += sum(1 for ch in w if ch.isdigit())
@@ -103,11 +109,27 @@ def has_year(words: list[str]) -> bool:
     return False
 
 
+ORDINAL_ENDINGS = ("th", "st", "nd", "rd")
+
+
+def ordinal_before_month(words: list[str], month_at: int | None) -> bool:
+    """An ordinal-shaped word right before the month ("fortieth march", "the fortieth of march") is a day,
+    valid or not: STT mishears days ("fourteenth" -> "fortieth"), and checking validity is the read-back's job.
+    Only that position: "birth" and "and" end in -th/-nd too."""
+    if month_at is None:
+        return False
+    at = month_at - 2 if month_at >= 2 and words[month_at - 1] == "of" else month_at - 1
+    if at < 0:
+        return False
+    w = words[at]
+    return w.isalpha() and w.endswith(ORDINAL_ENDINGS) and w not in DANGLING
+
+
 def dob_status(words: list[str]) -> tuple[Status, str]:
     """Day, month and year all heard? Lists whatever is missing."""
     month_at = next((i for i, w in enumerate(words) if w in MONTHS), None)
     missing = []
-    if not any(is_day(w) for w in words):
+    if not any(is_day(w) for w in words) and not ordinal_before_month(words, month_at):
         missing.append("day")
     if month_at is None:
         missing.append("month")
@@ -155,7 +177,9 @@ def completeness(transcript: str, slot: str) -> tuple[Status, str]:
         return Status.INCOMPLETE, f"ends with filler '{last}'"
 
     # Ends on a word that needs something after it: the caller isn't finished.
-    if last in DANGLING:
+    # Except a homophone counted as a digit ("six for"): that's the last digit, not a preposition.
+    counted_as_digit = slot == "account_number" and is_digit_homophone(words, len(words) - 1)
+    if last in DANGLING and not counted_as_digit:
         return Status.INCOMPLETE, f"ends with '{last}'"
 
     # Last word cut off mid-way ("4-", "m-"): the caller is restarting it.

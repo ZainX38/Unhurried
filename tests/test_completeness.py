@@ -27,6 +27,15 @@ CASES = [
     ("fourteenth of March", "date_of_birth", Status.INCOMPLETE, "missing year"),
     ("fourteenth of March nineteen ninety nine", "date_of_birth", Status.COMPLETE, "day, month, year"),
     ("the second of october two thousand and four", "date_of_birth", Status.COMPLETE, "day, month, year"),
+    # Vosk homophones (ticket 06): a digit homophone next to a digit is a digit, even at the end.
+    ("seven three zero nine one one six for", "account_number", Status.COMPLETE, "8/8 digits"),
+    ("i'm looking for", "reason", Status.INCOMPLETE, "ends with 'for'"),
+    ("four for five to one eight eight three zero", "account_number", Status.UNSURE, "9 digits"),
+    # An ordinal-shaped word before the month is a day, valid or not ("fortieth": Vosk for "fourteenth").
+    ("the fortieth of march nineteen ninety nine", "date_of_birth", Status.COMPLETE, "day, month, year"),
+    ("the fortieth of march", "date_of_birth", Status.INCOMPLETE, "missing year"),
+    # ...but only the word right before the month ("birth" also ends in -th).
+    ("my date of birth is march nineteen ninety nine", "date_of_birth", Status.INCOMPLETE, "missing day"),
 ]
 
 
