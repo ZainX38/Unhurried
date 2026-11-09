@@ -142,7 +142,7 @@ I have been using these plans for a few of my projects and never had any issues 
 6. `/code-review`: fix real problems and note any suggestion you reject and why.
 7. Commit, move the ticket to `issues/done/`, `/handoff` and close the session.
 
-## Approach B: Plumbing
+### Approach B: Plumbing
 
 1. In a fresh session, plan mode. Ask which parts are plumbing and which (if any) you should write.
 2. `/implement`: "Implement issues/00N-*.md. Keep it minimal. Stop after each file and give me a 5-bullet walkthrough."
@@ -150,7 +150,7 @@ I have been using these plans for a few of my projects and never had any issues 
 4. Run it for real: tests, typecheck, a real call or a WAV streamed in.
 5. Check myself, NOTES.md, commit, /handoff.
 
----
+
 
 ## The Endpointer
 
@@ -184,10 +184,27 @@ etc.
 
 
 
+### Creating Testing Cases
+
+I was unable to find volunteers for this so I decided to go with synthetic testing, which is described on Ticket 2. I manually created a range of testing data using my own voice, which then Claude added a script to generated different types of audio samples: fluent, stuttered and pauses group.
+
+```
+We're on ticket issues/02-. Recordings are done and inside eval/data/recordings/ whcih has 26 piece files and 4 natural pause takes (P_.wav), described in eval/recording_scripts.md. The line list is in eval/data/recordings/lines.csv
+
+Plan for make_data.py:
+- fluent group: trim each piece, join with short natural gaps (150-300ms)
+- stammered group: Block before the digit/date piece (burst = first 60-150ms of that piece, silence 1-3s fileed with room tone), 3 variants per line, fixed seed.
+- pauses group: P_* takes as recorded; true_end_ms = detected speech end
+- manifest.csv with columns: file, group, line, slot, transcript, true_end_ms, notes.
+- commit 3 demo samples: A1 is flient, stammered and the P_A2 pause take
+
+Update the ticket's design notes with these decisions, explain the plan, no code yet
+```
+
+After agreeing on the plan, I used `/implement` to add the new changes.
 
 
-
-
+Also, the room tones became zero plus a 60 dBFS noise floor because the recordings had no room tone
 
 
 
