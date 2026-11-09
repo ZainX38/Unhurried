@@ -2,9 +2,10 @@
 
 Runs the VAD once per clip, then replays every clip at each threshold and writes:
 
-- eval/results/sweep.md         per-group cut-off rate, no-ends, wait median and p95 per threshold
+- eval/results/sweep.md         summary vs the targets, then per-group cut-off rate, no-ends, wait median and p95
 - eval/results/sweep_clips.csv  every per-clip record, with a threshold_ms column
 - eval/results/sweep.png        stammered cut-off rate (y) vs fluent median wait (x), one point per threshold
+- eval/results/cutoff_by_threshold.png  cut-off rate (y) vs threshold (x), one line per group
 
 Usage:
     uv run python -m eval.sweep
@@ -41,6 +42,10 @@ MUTED = "#898781"
 GRID = "#e1e0d9"
 AXIS = "#c3c2b7"
 SERIES = "#2a78d6"
+# Fixed categorical order (blue, orange, aqua), so a group keeps its colour in every chart.
+GROUP_COLORS = {"fluent": "#2a78d6", "stammered": "#eb6834", "pauses": "#1baf7a"}
+# Shape as a second channel: where lines overlap, a large square shows under a small triangle.
+GROUP_MARKERS = {"fluent": ("o", 64), "stammered": ("s", 110), "pauses": ("^", 50)}
 
 
 @dataclass(frozen=True)
@@ -57,6 +62,33 @@ def sweep(clips: list[Clip], thresholds: list[int] = THRESHOLDS_MS) -> list[Swee
         records = run(clips, baseline_factory(t))
         points.append(SweepPoint(t, records, metrics.summarize(records)))
     return points
+
+
+def meets_targets(p: SweepPoint) -> bool:
+    """Spec targets: fluent median Wait time <= 900 ms AND stammered Cut-off rate < 5%."""
+    fluent, stammered = p.stats.get("fluent"), p.stats.get("stammered")
+    return (
+        fluent is not None and fluent.wait_median is not None
+        and fluent.wait_median <= TARGET_FLUENT_WAIT_MS
+        and stammered is not None and stammered.cut_off_rate is not None
+        and stammered.cut_off_rate < TARGET_STAMMERED_CUT_OFF
+    )
+
+
+def summary_table(points: list[SweepPoint]) -> str:
+    """One row per threshold: the two target numbers, fluent cut-offs, and whether both targets are met."""
+    lines = [
+        f"| threshold (ms) | stammered cut-off (target < {TARGET_STAMMERED_CUT_OFF:.0%}) "
+        f"| fluent median wait (ms, target ≤ {TARGET_FLUENT_WAIT_MS}) | fluent cut-off | both targets met |",
+        "| ---: | ---: | ---: | ---: | :---: |",
+    ]
+    for p in points:
+        fluent, stammered = p.stats.get("fluent"), p.stats.get("stammered")
+        lines.append(
+            f"| {p.threshold_ms} | {fmt_rate(stammered)} | {fmt_ms(fluent.wait_median if fluent else None)} "
+            f"| {fmt_rate(fluent)} | {'✅' if meets_targets(p) else '❌'} |"
+        )
+    return "\n".join(lines)
 
 
 def sweep_table(points: list[SweepPoint]) -> str:
@@ -145,6 +177,73 @@ def plot(points: list[SweepPoint], path: Path) -> None:
     plt.close(fig)
 
 
+def style_axes(fig, ax) -> None:
+    """Shared chrome: light surface, hairline solid grid, muted ticks, no top/right spines."""
+    fig.patch.set_facecolor(SURFACE)
+    ax.set_facecolor(SURFACE)
+    ax.grid(True, color=GRID, lw=0.8, zorder=0)
+    ax.set_axisbelow(True)
+    ax.tick_params(colors=MUTED, labelsize=8, length=0)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(AXIS)
+
+
+def plot_cutoff_by_threshold(points: list[SweepPoint], path: Path) -> None:
+    """Cut-off rate per group against the threshold. Lines overlap at 0% and 100%, so each
+    line gets a surface-coloured ring and a direct label where the groups are most spread out."""
+    fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+    style_axes(fig, ax)
+
+    ax.axhline(TARGET_STAMMERED_CUT_OFF * 100, color=MUTED, lw=1, ls=(0, (4, 3)), zorder=1)
+    ax.text(1, TARGET_STAMMERED_CUT_OFF * 100 + 1, "stammered target < 5% ",
+            color=INK_SECONDARY, fontsize=8, va="bottom", ha="right", transform=ax.get_yaxis_transform())
+
+    thresholds = [p.threshold_ms for p in points]
+    present = [g for g in GROUPS if any(g in p.stats for p in points)]
+    spread = {}  # group -> (x, y) of its label
+    for z, g in enumerate(present):
+        xs = [p.threshold_ms for p in points if g in p.stats and p.stats[g].cut_off_rate is not None]
+        ys = [p.stats[g].cut_off_rate * 100 for p in points if g in p.stats and p.stats[g].cut_off_rate is not None]
+        if not xs:
+            continue
+        color = GROUP_COLORS.get(g, SERIES)
+        marker, size = GROUP_MARKERS.get(g, ("o", 64))
+        ax.plot(xs, ys, color=SURFACE, lw=5, zorder=2 + z, solid_capstyle="round")  # ring where lines cross
+        ax.plot(xs, ys, color=color, lw=2, zorder=2 + z, marker=marker, markersize=size ** 0.5,
+                markeredgecolor=SURFACE, markeredgewidth=1.5, label=g)
+        # Label at the threshold where this group sits furthest from the others.
+        others = [h for h in present if h != g]
+        def gap(i: int) -> float:
+            ds = [abs(ys[i] - points[i].stats[h].cut_off_rate * 100) for h in others
+                  if h in points[i].stats and points[i].stats[h].cut_off_rate is not None]
+            return min(ds, default=100)
+        best = max(range(len(xs)), key=lambda i: (gap(i), -abs(ys[i] - 50)))
+        spread[g] = (xs[best], ys[best])
+
+    for g, (x, y) in spread.items():
+        ax.annotate(g, (x, y), xytext=(8, 4), textcoords="offset points", color=INK, fontsize=9,
+                    va="bottom", ha="left")
+
+    ax.legend(loc="upper right", frameon=False, fontsize=8, labelcolor=INK_SECONDARY)
+    fig.suptitle("Cut-off rate by fixed silence threshold", color=INK, fontsize=11, x=0.02, ha="left")
+    ax.set_title("Share of each group's clips where the Baseline ended before the caller finished. "
+                 "Where lines overlap,\nthe groups have the same rate (squares = stammered, triangles = pauses).",
+                 color=INK_SECONDARY, fontsize=9, loc="left", pad=10)
+    ax.set_xlabel("Baseline silence threshold (ms)", color=INK_SECONDARY, fontsize=9)
+    ax.set_ylabel("cut-off rate (%)", color=INK_SECONDARY, fontsize=9)
+    ax.set_xticks(thresholds)
+    ax.tick_params(axis="x", labelrotation=0)
+    ax.set_ylim(-3, 105)
+    ax.set_xlim(0, max(thresholds, default=1000) * 1.05)
+
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, facecolor=SURFACE)
+    plt.close(fig)
+
+
 def write_outputs(points: list[SweepPoint], out_dir: Path) -> None:
     n = len(points[0].records) if points else 0
     md = [
@@ -155,7 +254,15 @@ def write_outputs(points: list[SweepPoint], out_dir: Path) -> None:
         "\"No end\" = no END inside the clip: not a Cut-off, not in the wait stats.",
         "Median and p95 use linear interpolation (numpy's default). With 10 fluent and 4 pauses clips, p95 is close to the maximum.",
         "",
-        "![sweep](sweep.png)",
+        "## Summary",
+        "",
+        summary_table(points),
+        "",
+        "![stammered cut-off vs fluent wait](sweep.png)",
+        "",
+        "![cut-off rate by threshold](cutoff_by_threshold.png)",
+        "",
+        "## Per group",
         "",
         sweep_table(points),
     ]
@@ -164,6 +271,7 @@ def write_outputs(points: list[SweepPoint], out_dir: Path) -> None:
     rows = [{"threshold_ms": p.threshold_ms, **r} for p in points for r in p.records]
     write_csv(out_dir / "sweep_clips.csv", rows, ["threshold_ms", *RECORD_COLUMNS])
     plot(points, out_dir / "sweep.png")
+    plot_cutoff_by_threshold(points, out_dir / "cutoff_by_threshold.png")
 
 
 def main() -> None:

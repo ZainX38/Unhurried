@@ -5,7 +5,24 @@ Cut-off = first END before `true_end_ms`. Wait time = first END − `true_end_ms
 "No end" = no END inside the clip: not a Cut-off, not in the wait stats.
 Median and p95 use linear interpolation (numpy's default). With 10 fluent and 4 pauses clips, p95 is close to the maximum.
 
-![sweep](sweep.png)
+## Summary
+
+| threshold (ms) | stammered cut-off (target < 5%) | fluent median wait (ms, target ≤ 900) | fluent cut-off | both targets met |
+| ---: | ---: | ---: | ---: | :---: |
+| 300 | 100% (30/30) | 292 | 80% (8/10) | ❌ |
+| 500 | 100% (30/30) | 518 | 0% (0/10) | ❌ |
+| 700 | 100% (30/30) | 710 | 0% (0/10) | ❌ |
+| 1000 | 100% (30/30) | 1030 | 0% (0/10) | ❌ |
+| 1500 | 87% (26/30) | 1510 | 0% (0/10) | ❌ |
+| 2000 | 60% (18/30) | 2022 | 0% (0/10) | ❌ |
+| 3000 | 0% (0/30) | 3014 | 0% (0/10) | ❌ |
+| 4000 | 0% (0/30) | 4006 | 0% (0/10) | ❌ |
+
+![stammered cut-off vs fluent wait](sweep.png)
+
+![cut-off rate by threshold](cutoff_by_threshold.png)
+
+## Per group
 
 ### fluent
 
