@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 
-Vocabulary follows `docs/GLOSSARY.md`. Relevant ADRs: 0001 (the Endpointer consumes events, not audio; pure state machine with Ticks) and 0002 (Vosk for STT).
+Vocabulary follows `docs/GLOSSARY.md`. Relevant ADRs: 0001 (the Endpointer consumes VAD frames, not audio; pure state machine whose only clock is the frames it is fed) and 0002 (Vosk for STT).
 
 ## Problem Statement
 
@@ -64,7 +64,7 @@ An evaluation harness backs up the claim. It runs both strategies over generated
 
 ### The developer (rule author)
 
-33. As the rule author, I want to write the Endpointer rules test-first against a narrow interface (events in, Endpoint or nothing out), so that I can iterate rule by rule.
+33. As the rule author, I want to write the Endpointer rules test-first against a narrow interface (one VAD frame in, a Decision out), so that I can iterate rule by rule.
 34. As the rule author, I want Completeness as a pure function of transcript and expected Slot, with its own tests, so that I can develop it separately from timing.
 35. As the rule author, I want Cleanup as a pure function of text, with its own tests, so that I can develop it separately.
 36. As the rule author, I want the Endpointer to have no clock of its own, so that my tests are deterministic and need no waiting.
@@ -89,19 +89,18 @@ An evaluation harness backs up the claim. It runs both strategies over generated
 
 ### Modules
 
-- **Events.** The shared vocabulary of timestamped events (times in milliseconds from the start of the Call):
-  - `SpeechStarted(t)` and `SpeechEnded(t)`, from the VAD
-  - `Words(t, text_so_far)`: the full transcript of the current Turn so far, not a delta
-  - `Tick(t)`
-  - `SystemSpeechStarted(t)` and `SystemSpeechEnded(t)`, for Barge-in
+- **Frames.** The shared input to every endpointing strategy is one call per 32 ms VAD frame (512 samples at 16 kHz):
+  - `is_speech`: the VAD's speech/silence label for the frame
+  - `frame_ms`: how much time the frame covers (32); this is the only way time moves forward
+  - `transcript`: the full transcript of the current Turn so far, not a delta
 
-  Both live audio and Timelines produce exactly this stream (ADR 0001).
+  Both live audio and recorded clips produce exactly this input (ADR 0001). System speech (for Barge-in) is tracked by the Call session, not passed to the Endpointer.
 
 - **Endpointer (developer-owned rules).** A pure state machine, one instance per Call. Interface:
-  - start a Turn with the expected Slot and a time
-  - feed one event, returning either an `Endpoint(t)` or nothing
+  - `reset()` starts a new Turn (the expected Slot is given to the Endpointer when it is built or reset)
+  - `step(is_speech, frame_ms, transcript)` feeds one frame and returns a `Decision`: `CONTINUE`, `END` (the Endpoint) or `PROMPT`, with a reason
 
-  It may keep memory across Turns within the Call. It has no wall clock: silence durations are computed only from event timestamps, including Ticks. It must Endpoint once continuous silence reaches the 5-second Ceiling, whatever else its rules say. It consults Completeness on the latest `Words` text.
+  It may keep memory across Turns within the Call. It has no wall clock: silence durations are computed only by adding up the `frame_ms` of silent frames. It must Endpoint once continuous silence reaches the 5-second Ceiling, whatever else its rules say. It consults Completeness on the latest `transcript`.
 
 - **Endpointing strategy interface.** The Endpointer and the fixed-timeout Baseline (parameterised by its silence timeout) share one interface, so the Call session, the live server and the evaluation can swap them freely. The Baseline ignores words and simply Endpoints after N ms of continuous silence following speech.
 
@@ -129,13 +128,13 @@ An evaluation harness backs up the claim. It runs both strategies over generated
 
   Barge-in: speech during system speech emits `StopSpeaking`, and the speech continues the same Turn. Barge-in is kept only if it stays small; otherwise it moves to "next steps".
 
-- **Audio front end.** Converts 16 kHz mono PCM into Events:
-  - **Silero VAD** (ONNX, no PyTorch) produces `SpeechStarted` and `SpeechEnded` with minimum-duration smoothing.
-  - **Vosk** streaming produces `Words`, from partials and finals. Vosk's own "final" segmentation is treated only as transcript chunks, never as Turn ends (ADR 0002).
+- **Audio front end.** Converts 16 kHz mono PCM into frames:
+  - **VAD** labels each 32 ms frame speech or silence: an energy VAD first, Silero (ONNX, no PyTorch) once it works.
+  - **Vosk** streaming produces the Turn's `transcript`, from partials and finals. Vosk's own "final" segmentation is treated only as transcript chunks, never as Turn ends (ADR 0002).
 
   The same front end is used by the live server and by the audio evaluations.
 
-- **Live server.** FastAPI with one WebSocket per Call. The browser streams PCM; the server runs the audio front end, sends a `Tick` about every 50 ms, and runs the Call session in the selected mode (Baseline at 700 ms, or Unhurried). It sends actions and timeline events back to the browser.
+- **Live server.** FastAPI with one WebSocket per Call. The browser streams PCM; the server runs the audio front end, calls `step()` once per 32 ms frame, and runs the Call session in the selected mode (Baseline at 700 ms, or Unhurried). It sends actions and timeline events back to the browser.
 
 - **Browser UI.** Plain HTML/JS:
   - mic capture with resampling to 16 kHz PCM
@@ -175,7 +174,7 @@ An evaluation harness backs up the claim. It runs both strategies over generated
 
 ## Testing Decisions
 
-- **What makes a good test**: it checks external behaviour through a seam (what goes in, what comes out) and never internal state or private helpers. Endpointer tests assert *when* an Endpoint happens for a given event script, not how the rules are stored. All tests are deterministic: no wall clock, no randomness without a fixed seed, no network.
+- **What makes a good test**: it checks external behaviour through a seam (what goes in, what comes out) and never internal state or private helpers. Endpointer tests assert *when* an Endpoint happens for a given frame script, not how the rules are stored. All tests are deterministic: no wall clock, no randomness without a fixed seed, no network.
 - **Seam 1, Call session**: hand-written event scripts drive whole Calls and assert the action sequence. Examples:
   - a severe caller's account number with a 2 s Block gets no Endpoint during the Block and a Read-back of the correct 8 digits
   - "double four" is parsed correctly
@@ -184,7 +183,7 @@ An evaluation harness backs up the claim. It runs both strategies over generated
   - a full fluent Call completes with the right Intent
   - the Baseline strategy in the same script Cuts off at the Block
 - **Seam 2, Evaluation run**: tiny hand-made Timelines with known answers check the metric maths (for example, a 700 ms Baseline on a Turn containing a 1 s Block gives exactly 1 Cut-off; Wait time is computed only for Turns that weren't Cut off; p95 is correct). The same seed gives identical results. The mid-clip Cut-off rule is checked on a hand-made clip timeline.
-- **Seam 3, Endpointer** (narrow; the developer uses it to write rules test-first with `/tdd`): event scripts in, Endpoint time or none out. Includes Ceiling behaviour and memory across Turns.
+- **Seam 3, Endpointer** (narrow; the developer uses it to write rules test-first with `/tdd`): frame scripts in, Endpoint time or none out. Includes Ceiling behaviour and memory across Turns.
 - **Completeness and Cleanup**: direct table-style tests of the pure functions. These are written by the developer alongside the rules.
 - **Slot parsers and Dialogue**: covered through seam 1. Parsers may get a few direct table tests where cases are numerous.
 - **Not unit-tested (plumbing)**: browser, WebSocket, Silero, Vosk. They're covered by one end-to-end smoke test that runs a committed synthetic WAV through the real audio front end and Call session and checks that sensible events and an Endpoint are produced. This test is skipped if the models haven't been downloaded.
