@@ -267,3 +267,77 @@ This is perfect for completeness as there are so many cases I need to work on. T
 
 
 As there were so many cases and the code was simple, I did half while leaving the other half to Claude. I then went over the code to ensure everything worked fine.
+
+### Patient Feature
+
+When working on Ticket 5, the patiend Endpointer needed a way of getting words gradually because that's how it will work eventually when I integrate it with Vosk. But Vosk isn't needed until Ticket 6 and if I added it now, it would make the work harder.
+
+So the harness needed a way of giving the endpointer realistic words at realistic times, without a real STT. So I used an Oracle Transcript for this, which reveals perfect words at the times a real STT would produce. This words because my clips were built from pieces, so the data script knows exactly when each piece ends, so it can reveal each piece's words shortly after. 
+
+I got Claude to do these changes as they were tedious:
+1. lines.csv now has a piece_texts column
+    - Change: each line now lists the words of each piece, e.g. My account number is|4 5 2 1|8 8 3 0.
+    - Reason: before, only the whole sentence was stored. To reveal words piece by piece, the harness needs to know which words belong to which piece.
+
+2. The manifest got piece_ends_ms and piece_texts
+    - Change: for each clip, when each piece’s speech ends, e.g. 1830;3900;7671, plus the text of each piece.
+    - Reason: this is the timetable the harness follows to reveal words. The last time always equals true_end_ms, which is a built-in sanity check.
+
+3. run.py reveals words 300 ms after each piece ends
+    - Reason: 300 ms (ORACLE_DELAY_MS)? Real STT is never instant. Adding a delay keeps the test honest
+
+4. Pause takes get None instead of words
+    - What: the 4 P_* clips are single recordings with no piece times, so the harness passes transcript=None.
+    - Why None and not an empty string ""? They mean different things:
+    "" = “STT is running, but nothing has been heard yet”. Your rule treats speech heard + empty text on an account/DOB slot as INCOMPLETE.
+    None = “no STT available at all”, so completeness is skipped and the endpointer uses timing only.
+    Without that distinction, the pause takes would look like “speech heard, no words” forever, and would never end.
+
+    This is temporary: in Ticket 6, Vosk gives them real words.
+
+5. The Protocol changed (types.py)
+    - step(..., transcript: str | None): the type now allows None, for the reason above.
+    - reset(expected_slot: str): each turn now starts by saying which question was asked, because completeness needs it (“4 5 2 1” is incomplete for an account number but meaningless for a date).
+
+
+I also used the skill `/tdd` to implement the class `patient.py` which made it easier for me to develop it. 
+
+**Part 2: `patient.py` (me, Recipe A)**
+ 
+- **What it is:** the Baseline's silence counting, but patience depends on evidence instead of a fixed 700 ms.
+- **I wrote:** `patient.py` with `/tdd`, plus prepositions (about, for, with, of, to, from) added to completeness's dangling words, because a sentence can't end on them (a principle, not tuning to my data).
+- **Rules:**
+  - INCOMPLETE → silence alone never ends the turn; PROMPT ("take your time, or use the keypad") at 6 s, then keep listening. Never hang up.
+  - COMPLETE structured answer → all bonuses dropped; end after `complete_ms` (700, or 400 as an option).
+  - UNSURE → base patience + bonuses, capped at 5 s.
+  - Speech heard + empty transcript on account/DOB → INCOMPLETE (the weak-spot fix; it lives here because only the endpointer knows `heard_speech`).
+  - Repetition → +1000 ms for 8 s; call memory → +500 ms for the rest of the call after real evidence of stammering.
+  - `reset(expected_slot)` clears turn state but keeps call memory.
+  - Every decision carries a reason string.
+- **Interface:** `Patient(base_ms=700, complete_ms=700)` with the slot only in `reset()`, because one call has several turns with different slots.
+**Part 3: wiring + chart (Claude, Recipe B)**
+ 
+- `--endpointer {baseline,patient}` and `--complete-ms` in `run.py`; the sweep also runs Patient at 700 and 400 ms and plots them as orange diamonds over the Baseline curve; `results.md` is generated with every miss and its reason.
+**Results**
+ 
+| Endpointer | Stammered cut-off rate | Fluent median wait | Fluent p95 wait |
+| --- | --- | --- | --- |
+| Baseline 700 ms | 100% | <!-- TODO --> | <!-- TODO --> |
+| Baseline 3000 ms (first to meet the 5% target) | 0% | <!-- TODO --> | <!-- TODO --> |
+| Patient, complete 700 ms | 20% | <!-- TODO --> | <!-- TODO --> |
+| Patient, complete 400 ms | 20% | <!-- TODO --> | <!-- TODO --> |
+ 
+- Both Patient points sit **below and to the left of** the fixed-timeout curve.
+- **The 6 misses are R2 ×3 and C1 ×3, exactly as predicted before running:**
+  - R2 ("i want to set up"): "up" can end a sentence, so completeness is honestly UNSURE.
+  - C1 (block before "yes"): a block before any words on a confirm slot. The known weak spot.
+- Neither setting meets both targets; I didn't tune the rules to remove the misses.
+**Caveats (also in `results.md`)**
+ 
+- Oracle transcripts are perfect; real STT (Ticket 6) will be worse.
+- The 400 ms gain is limited by the 300 ms reveal delay.
+- Pause takes ran timing-only.
+- Repetition and call-memory rules never fire on this data (no repetitions in the oracle text), so they're covered by unit tests only.
+- Single speaker, inserted stammers, rules chosen with these clips in view.
+- **Checked by:** 132 tests pass; Baseline outputs unchanged; a synthetic block test shows the Baseline cuts off and Patient doesn't, with the same fluent wait.
+- **Decided:** `results.md` stays fully generated; my interpretation goes in a hand-written `eval/results/discussion.md`.
