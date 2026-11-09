@@ -113,6 +113,81 @@ The most useful one is `to-ticket`, which breaks the spec into tickets, with one
 
 I find this very useful as I can track my progress, and if I need to ask Claude, I can direct Claude to that issue as it's the right size for a **fresh Claude session which keeps it inside the zone where it works the best in the context window**.
 
+---
+
+## Approaching an Issue
+
+From the skill `to-tickets`, Claude created 10 issue files, which I need to work on one at a time. When I start working with them, I normally have two approaches: 
+- Approach A: Core 
+- Approach B: Plumbing
+
+When I write code myself, I use Approach A, but when something is a bit more time consuming, I use Approach B.
+I have been using these plans for a few of my projects and never had any issues with them. They help me understand my code in a deeper and more technical level.
+
+| | Approach A: Core | Approach B: Plumbing |
+| --- | --- | --- |
+| **Code Writer** | Me | Claude |
+| **Main Skill** | `/tdd` | `/implement` |
+| **My job** | I write and debug the logic | It makes the decisions, reads every line and tests it |
+| **Claude's job** | Write tests from the cases I give it and also reviews | Write the code and explain it |
+| **Reason** | I properly understand the code | Works through code I already understand well enough |
+
+### Approach A: Core
+
+1. In a fresh session `run claude` in the repo and paste the last handoff
+2. Plan mode: "We're on ticket issues/00N-*.md. Explain the plan: files, functions, inputs, outputs, tests. No code."
+3. /tdd: "I'll write the implementation myself. Write one failing test at a time from my cases, then wait."
+4. Red → green → refactor loop: Claude adds a test, and then `run uv run pytest`. If it fails, write the smallest code that passes.
+5. I also like Claude to quick me so I understand everything better e.g. "Quiz me with 3 questions, one at a time."
+6. `/code-review`: fix real problems and note any suggestion you reject and why.
+7. Commit, move the ticket to `issues/done/`, `/handoff` and close the session.
+
+## Approach B: Plumbing
+
+1. In a fresh session, plan mode. Ask which parts are plumbing and which (if any) you should write.
+2. `/implement`: "Implement issues/00N-*.md. Keep it minimal. Stop after each file and give me a 5-bullet walkthrough."
+3. Then read every file. If anything unclear --> /wait-what or "explain this line by line"
+4. Run it for real: tests, typecheck, a real call or a WAV streamed in.
+5. Check myself, NOTES.md, commit, /handoff.
+
+---
+
+## The Endpointer
+
+Just as an example, when working on **Issue 1**, I use **Approach A**. This is the prompt I sent:
+
+```We are working on a ticket issues/01-endpointer-interface-and-baseline.md. Explain the plan: files, functions, inputs, outputs, tests. No code```
+
+With the response, I had a clear idea on how to start and what I had to do:
+
+```
+The idea in one line
+
+A small state machine with no audio, network, file or clock code. It takes one VAD frame at a time and returns a Decision with a reason. The Baseline is the first thing built behind it. The patient endpointer (ticket 05), the evaluation harness (03) and the live Session (07) all use the same interface later.
+
+Files
+
+1. src/unhurried/endpointer/types.py: shared vocabulary, no logic
+
+- Action: an enum with CONTINUE, END, PROMPT. The Baseline never returns PROMPT; it's there for ticket 05.
+
+...
+```
+
+I coded the files `unhurried/endpointer/types.py` and `unhurried/endpointer/baseline.py`.
+
+To test them, I sent the test cases to Claude in plain English, which Claude then created:
+- Test 1: Short Silence. Frames used: 1 speech, then 18 silences (576ms). Expected: CONTINUE
+- Test 2: 600ms edge case. 21st silence = 672ms, which is still under 700ms. Expected: CONTINUE
+- Test 3: Threshold hit. 22 silence = 704ms. Expected: END
+etc.
+
+
+
+
+
+
+
 
 
 
