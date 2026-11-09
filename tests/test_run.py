@@ -5,7 +5,8 @@ import numpy as np
 import pytest
 from eval.audio import write_wav
 from eval.run import (
-    ORACLE_DELAY_MS, Clip, baseline_factory, load_clips, oracle_transcripts, parse_pieces, replay, run, stt_style,
+    ORACLE_DELAY_MS, Clip, baseline_factory, load_clips, oracle_transcripts, parse_pieces, patient_factory,
+    replay, run, stt_style,
 )
 from unhurried.endpointer.baseline import Baseline
 from unhurried.vad import FRAME_MS, FRAME_SAMPLES
@@ -175,3 +176,10 @@ def test_load_clips_reads_the_manifest_and_runs_the_vad(tmp_path: Path) -> None:
     [clip] = load_clips(write_tiny_manifest(tmp_path))
     assert (clip.file, clip.group, clip.slot, clip.true_end_ms) == ("clips/fluent/T1.wav", "fluent", "account_number", ms(36))
     assert clip.mask == frames((Q, 16), (S, 20), (Q, 250))  # no padding added: exactly the WAV's frames
+
+
+def test_patient_factory_builds_a_fresh_patient_with_its_settings() -> None:
+    factory = patient_factory(complete_ms=400)
+    a, b = factory(), factory()
+    assert a is not b
+    assert (a.base_ms, a.complete_ms) == (700, 400)

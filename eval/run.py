@@ -13,6 +13,7 @@ Clips without piece timing (the P_* takes) get transcript=None: timing-only.
 
 Usage:
     uv run python -m eval.run --threshold 700
+    uv run python -m eval.run --endpointer patient --complete-ms 400
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from pathlib import Path
 from eval import metrics
 from eval.audio import read_wav
 from unhurried.endpointer.baseline import Baseline
+from unhurried.endpointer.patient import Patient
 from unhurried.endpointer.types import Action, Endpointer
 from unhurried.vad import FRAME_MS, speech_mask
 
@@ -144,6 +146,10 @@ def baseline_factory(threshold_ms: int) -> Callable[[], Endpointer]:
     return lambda: Baseline(threshold_ms)
 
 
+def patient_factory(complete_ms: int = 700, base_ms: int = 700) -> Callable[[], Endpointer]:
+    return lambda: Patient(base_ms=base_ms, complete_ms=complete_ms)
+
+
 # --- Output ------------------------------------------------------------------------------
 
 def write_csv(path: Path, records: list[dict], columns: list[str]) -> None:
@@ -182,16 +188,25 @@ def group_table(stats: dict) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--endpointer", choices=["baseline", "patient"], default="baseline")
     parser.add_argument("--threshold", type=int, default=700, help="Baseline silence threshold in ms")
+    parser.add_argument("--complete-ms", type=int, default=700,
+                        help="Patient: silence that ends a COMPLETE answer, in ms")
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--out", type=Path, default=RESULTS_DIR)
     args = parser.parse_args()
 
-    records = run(load_clips(args.manifest), baseline_factory(args.threshold))
-    out = args.out / f"baseline_{args.threshold}_clips.csv"
+    if args.endpointer == "patient":
+        factory, name, label = (patient_factory(args.complete_ms), f"patient_{args.complete_ms}",
+                                f"Patient (complete {args.complete_ms} ms)")
+    else:
+        factory, name, label = baseline_factory(args.threshold), f"baseline_{args.threshold}", f"Baseline {args.threshold} ms"
+
+    records = run(load_clips(args.manifest), factory)
+    out = args.out / f"{name}_clips.csv"
     write_csv(out, records, RECORD_COLUMNS)
 
-    print(f"Baseline {args.threshold} ms, {len(records)} clips\n")
+    print(f"{label}, {len(records)} clips\n")
     print(group_table(metrics.summarize(records)))
     print(f"\nper-clip records -> {out}")
 

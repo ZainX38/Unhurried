@@ -1,10 +1,14 @@
-"""Sweep the Baseline's fixed silence threshold (ticket 03).
+"""Sweep the Baseline's fixed silence threshold (ticket 03) and place the Patient on it (ticket 05).
 
-Runs the VAD once per clip, then replays every clip at each threshold and writes:
+Runs the VAD once per clip, then replays every clip at each threshold, and
+through the Patient endpointer at each `complete_ms` setting, and writes:
 
 - eval/results/sweep.md         summary vs the targets, then per-group cut-off rate, no-ends, wait median and p95
 - eval/results/sweep_clips.csv  every per-clip record, with a threshold_ms column
-- eval/results/sweep.png        stammered cut-off rate (y) vs fluent median wait (x), one point per threshold
+- eval/results/sweep.png        stammered cut-off rate (y) vs fluent median wait (x), one point per threshold,
+                                plus one point per Patient setting
+- eval/results/results.md       Patient vs Baseline: summary, chart, per group, every Patient miss, caveats
+- eval/results/patient_clips.csv  every Patient per-clip record, with a complete_ms column
 - eval/results/cutoff_by_threshold.png  cut-off rate (y) vs threshold (x), one line per group
 
 Usage:
@@ -24,11 +28,12 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from eval import metrics  # noqa: E402
 from eval.run import (  # noqa: E402
-    DEFAULT_MANIFEST, GROUPS, RECORD_COLUMNS, RESULTS_DIR,
-    Clip, baseline_factory, fmt_ms, fmt_rate, load_clips, run, write_csv,
+    DEFAULT_MANIFEST, GROUPS, ORACLE_DELAY_MS, RECORD_COLUMNS, RESULTS_DIR,
+    Clip, baseline_factory, fmt_ms, fmt_rate, group_table, load_clips, patient_factory, run, write_csv,
 )
 
 THRESHOLDS_MS = [300, 500, 700, 1000, 1500, 2000, 3000, 4000]
+PATIENT_COMPLETE_MS = [700, 400]  # Patient settings plotted against the curve
 
 # Targets from the spec: fluent median Wait time <= 900 ms, stammered Cut-off rate < 5%.
 TARGET_FLUENT_WAIT_MS = 900
@@ -42,6 +47,7 @@ MUTED = "#898781"
 GRID = "#e1e0d9"
 AXIS = "#c3c2b7"
 SERIES = "#2a78d6"
+PATIENT = "#eb6834"  # second categorical slot (orange); validated against SERIES and SURFACE
 # Fixed categorical order (blue, orange, aqua), so a group keeps its colour in every chart.
 GROUP_COLORS = {"fluent": "#2a78d6", "stammered": "#eb6834", "pauses": "#1baf7a"}
 # Shape as a second channel: where lines overlap, a large square shows under a small triangle.
@@ -64,7 +70,23 @@ def sweep(clips: list[Clip], thresholds: list[int] = THRESHOLDS_MS) -> list[Swee
     return points
 
 
-def meets_targets(p: SweepPoint) -> bool:
+@dataclass(frozen=True)
+class PatientPoint:
+    complete_ms: int
+    records: list[dict]
+    stats: dict  # group -> metrics.GroupStats
+
+
+def patient_points(clips: list[Clip], complete_values: list[int] = PATIENT_COMPLETE_MS) -> list[PatientPoint]:
+    """Replay the same clips through the Patient endpointer at each complete_ms setting."""
+    points = []
+    for c in complete_values:
+        records = run(clips, patient_factory(c))
+        points.append(PatientPoint(c, records, metrics.summarize(records)))
+    return points
+
+
+def meets_targets(p: SweepPoint | PatientPoint) -> bool:
     """Spec targets: fluent median Wait time <= 900 ms AND stammered Cut-off rate < 5%."""
     fluent, stammered = p.stats.get("fluent"), p.stats.get("stammered")
     return (
@@ -112,21 +134,24 @@ def sweep_table(points: list[SweepPoint]) -> str:
     return "\n".join(out)
 
 
+def chart_xy(stats: dict) -> tuple[float, float] | None:
+    """(fluent median wait, stammered cut-off rate), or None if either is missing."""
+    fluent, stammered = stats.get("fluent"), stats.get("stammered")
+    if fluent is None or stammered is None:
+        return None
+    if fluent.wait_median is None or stammered.cut_off_rate is None:
+        return None  # e.g. every fluent clip cut off: no wait to plot
+    return fluent.wait_median, stammered.cut_off_rate
+
+
 def curve(points: list[SweepPoint]) -> list[tuple[int, float, float]]:
     """(threshold, fluent median wait, stammered cut-off rate) for every threshold where both exist."""
-    xs = []
-    for p in points:
-        fluent, stammered = p.stats.get("fluent"), p.stats.get("stammered")
-        if fluent is None or stammered is None:
-            continue
-        if fluent.wait_median is None or stammered.cut_off_rate is None:
-            continue  # e.g. every fluent clip cut off: no wait to plot
-        xs.append((p.threshold_ms, fluent.wait_median, stammered.cut_off_rate))
-    return xs
+    return [(p.threshold_ms, *xy) for p in points if (xy := chart_xy(p.stats)) is not None]
 
 
-def plot(points: list[SweepPoint], path: Path) -> None:
+def plot(points: list[SweepPoint], path: Path, patients: list[PatientPoint] = ()) -> None:
     data = curve(points)
+    patient_data = [(pp.complete_ms, *xy) for pp in patients if (xy := chart_xy(pp.stats)) is not None]
     fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
     fig.patch.set_facecolor(SURFACE)
     ax.set_facecolor(SURFACE)
@@ -143,7 +168,7 @@ def plot(points: list[SweepPoint], path: Path) -> None:
     if data:
         thresholds, waits, rates = zip(*data)
         rates_pct = [r * 100 for r in rates]
-        ax.plot(waits, rates_pct, color=SERIES, lw=2, zorder=2)
+        ax.plot(waits, rates_pct, color=SERIES, lw=2, zorder=2, label="Baseline (fixed threshold)")
         ax.scatter(waits, rates_pct, s=64, color=SERIES, edgecolor=SURFACE, linewidth=2, zorder=3)
         fluent_cut = {p.threshold_ms: p.stats["fluent"] for p in points if "fluent" in p.stats}
         for t, x, y in data:  # the threshold is what identifies each point
@@ -156,13 +181,28 @@ def plot(points: list[SweepPoint], path: Path) -> None:
                         ha="center" if top else "left", va="top" if top else "bottom",
                         color=INK_SECONDARY, fontsize=8, linespacing=1.1)
 
-    fig.suptitle("Baseline sweep: raising the fixed timeout costs fluent callers",
-                 color=INK, fontsize=11, x=0.02, ha="left")
-    ax.set_title("Each point is one fixed silence threshold (ms)", color=INK_SECONDARY, fontsize=9, loc="left", pad=10)
+    for c, x, y in patient_data:
+        # Diamond with a surface ring: a second channel besides colour, and it stays visible on the curve.
+        ax.scatter([x], [y * 100], s=90, marker="D", color=PATIENT, edgecolor=SURFACE, linewidth=2, zorder=4,
+                   label="Patient endpointer (label: complete_ms)" if c == patient_data[0][0] else None)
+        # Settings sit close together, so only the number; the legend says what it is.
+        ax.annotate(f"{c} ms", (x, y * 100), xytext=(0, -10), textcoords="offset points",
+                    ha="center", va="top", color=INK, fontsize=8)
+
+    if patient_data:
+        fig.suptitle("Patient endpointer vs the fixed-threshold curve", color=INK, fontsize=11, x=0.02, ha="left")
+        ax.set_title("Blue: one point per fixed silence threshold (ms). Orange: the Patient, which starts at 700 ms\n"
+                     "and waits longer only when the words say the answer isn't finished.",
+                     color=INK_SECONDARY, fontsize=9, loc="left", pad=10)
+        ax.legend(loc="center right", frameon=False, fontsize=8, labelcolor=INK_SECONDARY)
+    else:
+        fig.suptitle("Baseline sweep: raising the fixed timeout costs fluent callers",
+                     color=INK, fontsize=11, x=0.02, ha="left")
+        ax.set_title("Each point is one fixed silence threshold (ms)", color=INK_SECONDARY, fontsize=9, loc="left", pad=10)
     ax.set_xlabel("fluent median wait time (ms)", color=INK_SECONDARY, fontsize=9)
     ax.set_ylabel("stammered cut-off rate (%)", color=INK_SECONDARY, fontsize=9)
     ax.set_ylim(-3, 105)
-    ax.set_xlim(0, max([x for _, x, _ in data], default=1000) * 1.08)
+    ax.set_xlim(0, max([x for _, x, _ in data] + [x for _, x, _ in patient_data], default=1000) * 1.08)
     ax.grid(True, color=GRID, lw=0.8, zorder=0)
     ax.set_axisbelow(True)
     ax.tick_params(colors=MUTED, labelsize=8, length=0)
@@ -244,7 +284,90 @@ def plot_cutoff_by_threshold(points: list[SweepPoint], path: Path) -> None:
     plt.close(fig)
 
 
-def write_outputs(points: list[SweepPoint], out_dir: Path) -> None:
+def comparison_table(points: list[SweepPoint], patients: list[PatientPoint]) -> str:
+    """Patient settings next to the Baseline at 700 ms (same start) and at the first threshold
+    that meets the stammered target (what a fixed timeout must cost to protect stammerers)."""
+    rows: list[tuple[str, dict]] = []
+    by_t = {p.threshold_ms: p for p in points}
+    if 700 in by_t:
+        rows.append(("Baseline 700 ms", by_t[700].stats))
+    safe = next((p for p in points if (st := p.stats.get("stammered")) is not None
+                 and st.cut_off_rate is not None and st.cut_off_rate < TARGET_STAMMERED_CUT_OFF), None)
+    if safe is not None and safe.threshold_ms != 700:
+        rows.append((f"Baseline {safe.threshold_ms} ms (first to meet the stammered target)", safe.stats))
+    rows += [(f"**Patient, complete {pp.complete_ms} ms**", pp.stats) for pp in patients]
+
+    lines = [
+        f"| endpointer | stammered cut-off (target < {TARGET_STAMMERED_CUT_OFF:.0%}) "
+        f"| fluent median wait (ms, target ≤ {TARGET_FLUENT_WAIT_MS}) | fluent p95 wait (ms) "
+        f"| fluent cut-off | pauses cut-off | both targets met |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | :---: |",
+    ]
+    for name, stats in rows:
+        fluent = stats.get("fluent")
+        met = meets_targets(SweepPoint(0, [], stats))
+        lines.append(
+            f"| {name} | {fmt_rate(stats.get('stammered'))} | {fmt_ms(fluent.wait_median if fluent else None)} "
+            f"| {fmt_ms(fluent.wait_p95 if fluent else None)} | {fmt_rate(fluent)} | {fmt_rate(stats.get('pauses'))} "
+            f"| {'✅' if met else '❌'} |"
+        )
+    return "\n".join(lines)
+
+
+def misses_table(patients: list[PatientPoint]) -> str:
+    """Every clip the Patient cut off or never ended, with its reason, once per setting it happens in."""
+    seen: dict[tuple[str, str, str], list[int]] = {}
+    for pp in patients:
+        for r in pp.records:
+            if r["outcome"] != "ended":
+                seen.setdefault((r["file"], r["outcome"], r["reason"]), []).append(pp.complete_ms)
+    if not seen:
+        return "None."
+    lines = ["| clip | outcome | at complete_ms | reason at the END |", "| --- | --- | --- | --- |"]
+    for (file, outcome, reason), settings in seen.items():
+        lines.append(f"| {file} | {outcome} | {', '.join(map(str, settings))} | {reason or '-'} |")
+    return "\n".join(lines)
+
+
+# Short factual caveats only. Interpretation goes in the hand-written eval/results/discussion.md.
+CAVEATS = f"""\
+- Transcripts are an oracle, not STT: each piece's exact text appears {ORACLE_DELAY_MS} ms after its speech
+  ends, lowercased and without punctuation. Real STT (ticket 06) adds mishearings and its own latency.
+- A COMPLETE answer can only end the Turn once its last words are in the transcript, so no wait here is
+  shorter than {ORACLE_DELAY_MS} ms, whatever `complete_ms` is.
+- Pauses clips (P_*) have no piece timing and get `transcript=None`: timing-only, the same rule as the
+  700 ms Baseline.
+- The oracle text has no repeated words and every clip is one Turn, so the repetition bonus and call
+  memory never fire in this run. They are tested only in `tests/test_patient.py`.
+"""
+
+
+def results_md(points: list[SweepPoint], patients: list[PatientPoint]) -> str:
+    n = len(patients[0].records) if patients else 0
+    out = [
+        "# Results: Patient endpointer vs the Baseline",
+        "",
+        "Generated by `uv run python -m eval.sweep`; do not edit by hand. Interpretation: [discussion.md](discussion.md).",
+        "",
+        f"{n} clips from the manifest, same VAD, frames and scoring as [the Baseline sweep](sweep.md).",
+        "`complete_ms` is the silence that ends a COMPLETE answer; base patience is 700 ms.",
+        "",
+        "## Summary",
+        "",
+        comparison_table(points, patients),
+        "",
+        "![Patient vs the fixed-threshold curve](sweep.png)",
+        "",
+        "## Per group",
+        "",
+    ]
+    for pp in patients:
+        out += [f"### Patient, complete {pp.complete_ms} ms", "", group_table(pp.stats), ""]
+    out += ["## Every Patient miss", "", misses_table(patients), "", "## Caveats", "", CAVEATS]
+    return "\n".join(out)
+
+
+def write_outputs(points: list[SweepPoint], out_dir: Path, patients: list[PatientPoint] = ()) -> None:
     n = len(points[0].records) if points else 0
     md = [
         "# Baseline threshold sweep",
@@ -270,8 +393,12 @@ def write_outputs(points: list[SweepPoint], out_dir: Path) -> None:
     (out_dir / "sweep.md").write_text("\n".join(md), encoding="utf-8", newline="\n")
     rows = [{"threshold_ms": p.threshold_ms, **r} for p in points for r in p.records]
     write_csv(out_dir / "sweep_clips.csv", rows, ["threshold_ms", *RECORD_COLUMNS])
-    plot(points, out_dir / "sweep.png")
+    plot(points, out_dir / "sweep.png", list(patients))
     plot_cutoff_by_threshold(points, out_dir / "cutoff_by_threshold.png")
+    if patients:
+        (out_dir / "results.md").write_text(results_md(points, list(patients)), encoding="utf-8", newline="\n")
+        rows = [{"complete_ms": pp.complete_ms, **r} for pp in patients for r in pp.records]
+        write_csv(out_dir / "patient_clips.csv", rows, ["complete_ms", *RECORD_COLUMNS])
 
 
 def main() -> None:
@@ -279,12 +406,21 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--out", type=Path, default=RESULTS_DIR)
     parser.add_argument("--thresholds", type=int, nargs="+", default=THRESHOLDS_MS)
+    parser.add_argument("--patient-complete-ms", type=int, nargs="*", default=PATIENT_COMPLETE_MS,
+                        help="Patient settings to plot; pass none to plot the Baseline only")
     args = parser.parse_args()
 
-    points = sweep(load_clips(args.manifest), args.thresholds)
-    write_outputs(points, args.out)
+    clips = load_clips(args.manifest)
+    points = sweep(clips, args.thresholds)
+    patients = patient_points(clips, args.patient_complete_ms)
+    write_outputs(points, args.out, patients)
     print(sweep_table(points))
-    print(f"-> {args.out / 'sweep.md'}, sweep_clips.csv, sweep.png")
+    for pp in patients:  # plain ASCII: the Windows console can't print the table's symbols
+        fluent = pp.stats.get("fluent")
+        print(f"Patient complete {pp.complete_ms} ms: stammered cut-off {fmt_rate(pp.stats.get('stammered'))}, "
+              f"fluent median wait {fmt_ms(fluent.wait_median if fluent else None)} ms")
+    print(f"-> {args.out / 'sweep.md'}, sweep_clips.csv, sweep.png"
+          + (", results.md, patient_clips.csv" if patients else ""))
 
 
 if __name__ == "__main__":
