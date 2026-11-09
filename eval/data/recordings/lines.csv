@@ -1,0 +1,15 @@
+line,slot,pieces,text
+A1,account_number,3,My account number is 4 5 2 1 8 8 3 0
+A2,account_number,3,It's 7 3 0 9 1 1 6 4
+A3,account_number,3,"Yes, my account number is 2 6 0 4 9 9 1 8"
+A4,account_number,3,"Okay, it's 8 1 5 5 3 0 2 7"
+D1,date_of_birth,3,My date of birth is the fourteenth of March nineteen ninety nine
+D2,date_of_birth,3,It's the second of October two thousand and four
+R1,reason,2,I'm calling about my last bill
+R2,reason,2,I want to set up a payment plan
+C1,confirm,1,"Yes, that's right."
+C2,confirm,3,"No, it's 4 5 2 1 8 8 3 1"
+P_A2,account_number,1,It's hang on 7 3 0 9 1 1 6 4
+P_A4,account_number,1,"Let me just find the letter. Okay, it's 8 1 5 5 3 0 2 7"
+P_D1,date_of_birth,1,My date of birth is the fourteenth of March nineteen ninety nine
+P_R1,reason,1,I'm calling about um my last bill

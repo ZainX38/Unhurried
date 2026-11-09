@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Unhurried eval data: originals and generated clips (regenerate with eval/make_data.py)
+eval/data/recordings/originals/
+eval/data/clips/
+eval/data/manifest.csv
