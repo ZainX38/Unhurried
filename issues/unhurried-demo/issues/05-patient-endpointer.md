@@ -18,7 +18,7 @@ Start with a 10-minute `/grill-with-docs` on the bonus values before coding.
 | Completeness = `INCOMPLETE` | Silence alone can never end the Turn | If the answer is provably unfinished, ending is always wrong |
 | Recent repetition in transcript ("my my") | +1000 ms for 8 s | Someone who just repeated a sound is likely to pause again |
 | Completeness = `COMPLETE` structured answer (8/8 digits, clear yes/no) | Drop all bonuses → 700 ms | Nothing left to wait for; keeps fluent callers fast |
-| Cap | Patience ≤ 4000 ms | Bounds the worst-case wait |
+| Cap (Ceiling) | Patience ≤ 5000 ms | Bounds the worst-case wait |
 | 6 s of silence | `PROMPT`: "Take your time, you can also use the keypad", then keep listening | Never hang up on silence |
 
 - Reason strings make every decision checkable, e.g. `silence 900ms < patience 2700ms: account has 4/8 digits`. They appear in the demo's "why it's waiting" panel.
@@ -34,7 +34,7 @@ Start with a 10-minute `/grill-with-docs` on the bonus values before coding.
   - repetition seen → patience 1700 ms
   - 8/8 digits → back to 700 ms
   - 6 s silence → `PROMPT`, then still listening
-  - patience never exceeds 4000 ms
+  - patience never exceeds 5000 ms
 - Add a harness flag (`--endpointer patient`, Recipe B), run it, and plot your point on Sunday's curve.
 - Optional experiment: a timing-only Block detector (a short burst then ≥ 500 ms silence → +2400 ms). Report it honestly either way.
 
