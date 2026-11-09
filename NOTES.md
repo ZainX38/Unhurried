@@ -221,3 +221,49 @@ uv run python -m eval.run --threshold 700   # one threshold: prints the table, w
 - Results are in `eval/results/sweep.md` 
 - eval/results/sweep_clips.csv and baseline_700_clips.csv open in Excel with start eval\results\sweep_clips.csv. They have one row per clip, which is useful for finding which clips were cut off and at what time.
 
+
+### Completeness
+
+I decided to use rules as using an LLM has a few drawbacks:
+- Rules are faster as they take microseconds to process, while an LLM can add a latency of a few milliseconds which can take longer than the 32ms the frames are streamed.
+- More reliable as no timeouts or outages
+- Local and free
+
+
+I developed it using the skill `/tdd` which makes it easier to write this section. Each of the tests, adds a new rule, which means I don't write the whole function at once, but instead the test will drive me to build it rule by rule. 
+
+This is how the loop works:
+1. Red: Claude writes one test. I run `uv run pytest` and I watch it fail, and then read why it failed. 
+2. Green: I then write the smallest code that makes it pass, even if it's too simple.
+3. Refactor: then tidy up with proper names, breaking down code with functions
+4. Say next and repeat 
+
+
+This is perfect for completeness as there are so many cases I need to work on. This is an example of some of the cases I built in Obsidian:
+
+| #   | Transcript                                                       | Slot           | Expected   | Reason mentions                      |
+| --- | ---------------------------------------------------------------- | -------------- | ---------- | ------------------------------------ |
+| 1   | ""                                                               | account_number | UNSURE     | nothing heard                        |
+| 2   | "my account number is"                                           | account_number | INCOMPLETE | ends with "is"                       |
+| 3   | "MY ACCOUNT NUMBER IS"                                           | account_number | INCOMPLETE | capitals ignored                     |
+| 4   | "let me just find the letter"                                | account_number | INCOMPLETE | 0/8 digits                           |
+| 5   | "four five two one"                                              | account_number | INCOMPLETE | 4/8 digits                           |
+| 6   | "four five two one eight eight three zero"                   | account_number | COMPLETE   | 8/8 digits                           |
+| 7   | "four five two one eight eight three oh"                         | account_number | COMPLETE   | 8/8 ("oh" = 0)                       |
+| 8   | "4521 8830"                                                      | account_number | COMPLETE   | 8/8 digits                           |
+| 9   | "double eight four five two one three oh"                        | account_number | COMPLETE   | 8/8 ("double")                       |
+| 10  | "yes my account number is two six zero four nine nine one eight" | account_number | COMPLETE   | 8/8 digits ("yes" ignored)           |
+| 11  | "four four five two one eight eight three oh"                    | account_number | UNSURE     | 9 digits                             |
+| 12  | "4-"                                                             | account_number | INCOMPLETE | mid-restart                          |
+| 13  | "yes"                                                            | confirm        | COMPLETE   | yes                                  |
+| 14  | "no it's"                                                        | confirm        | INCOMPLETE | correction coming                    |
+| 15  | "no it's four five two one eight eight three one"           | confirm        | COMPLETE   | correction with 8/8 digits           |
+| 16  | "I'm calling about my"                                           | reason         | INCOMPLETE | ends with "my"                       |
+| 17  | "i'm calling about um"                                          | reason         | INCOMPLETE | filler at end                        |
+| 18  | "I'm calling about my bill"                                      | reason         | UNSURE     | free text                            |
+| 19  | "fourteenth of March"                                            | date_of_birth  | INCOMPLETE | missing year                         |
+| 20  | "fourteenth of March nineteen ninety nine"                       | date_of_birth  | COMPLETE   | day, month, year                     |
+| 21  | "the second of october two thousand and four" V                 | date_of_birth  | COMPLETE   | day, month, year ("and" inside year) |
+
+
+As there were so many cases and the code was simple, I did half while leaving the other half to Claude. I then went over the code to ensure everything worked fine.
