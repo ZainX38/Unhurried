@@ -208,3 +208,16 @@ Also, the room tones became zero plus a 60 dBFS noise floor because the recordin
 
 
 
+### Evaluation
+
+Evaluation stage was 50% my work and 50% Claude Code. Claude Code coded the run.py and sweep.py while I coded the metrics.py with the actual logic of the median and 95-percentile, and also the metrics test. 
+
+
+```shell
+uv run python -m eval.sweep                 # all 8 thresholds: writes sweep.md, sweep.png, sweep_clips.csv
+uv run python -m eval.run --threshold 700   # one threshold: prints the table, writes baseline_700_clips.csv
+```
+
+- Results are in `eval/results/sweep.md` 
+- eval/results/sweep_clips.csv and baseline_700_clips.csv open in Excel with start eval\results\sweep_clips.csv. They have one row per clip, which is useful for finding which clips were cut off and at what time.
+
