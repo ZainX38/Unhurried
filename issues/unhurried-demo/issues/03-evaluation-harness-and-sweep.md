@@ -9,7 +9,8 @@
 ## Understand
 
 - The harness replays each WAV frame by frame on a simulated clock (no real waiting), feeds the VAD results to an endpointer, and records the time it says `END`.
-- Each clip is padded with 8 s of silence so a patient endpointer has room to finish. A clip still listening at the end counts as +8 s (a lower bound).
+- **Do not add padding in the harness.** Every clip from ticket 02 already ends 8 s after `true_end_ms` (with a noise floor, not digital silence), which is enough for the 5 s Ceiling and the 6 s `PROMPT`. Replay each WAV exactly as it is. A clip still listening at the end counts as ended at the clip end (a lower bound).
+- Read each clip's Slot from the manifest's `slot` column and start the Turn with it. Don't guess the Slot from the transcript.
 - Metrics:
   - **Cut-off rate** per group = clips where `END` < `true_end_ms`, divided by the clips in the group.
   - **Extra wait** = your `END` minus the Baseline's `END`, on clips neither endpointer cut off, reported as median and p95.
