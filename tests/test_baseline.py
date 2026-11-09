@@ -111,3 +111,13 @@ def test_end_is_sticky_until_reset() -> None:
 def test_threshold_must_be_positive() -> None:
     with pytest.raises(ValueError):
         Baseline(threshold_ms=0)
+
+def test_reset_takes_the_slot_and_ignores_it() -> None:
+    b = Baseline()
+    speech(b)
+    silence(b, 10)
+    b.reset("account_number")  # Endpointer protocol: reset(expected_slot)
+    # State cleared: silence before any speech never ends the Turn.
+    assert actions(silence(b, 40)) == {Action.CONTINUE}
+    speech(b)
+    assert silence(b, 22)[-1].action is Action.END  # same 700 ms rule whatever the Slot

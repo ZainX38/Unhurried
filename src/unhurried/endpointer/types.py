@@ -17,12 +17,15 @@ class Decision:
 
 # Protocol used as it defines what methods an object should have
 class Endpointer(Protocol):
-    # Gets called every frame (32ms)
-    def step(self, is_speech: bool, frame_ms: int, transcript: str) -> Decision:
+    # Gets called every frame (32ms).
+    # transcript is what the STT has heard so far this Turn. "" = STT running but nothing heard yet;
+    # None = no STT at all (timing-only), so completeness must not be used.
+    def step(self, is_speech: bool, frame_ms: int, transcript: str | None) -> Decision:
         ...
 
-    # it resets the Turns for each prompt in the call. It basically clears the state for the new turn
-    def reset(self) -> None:
+    # Called before each Turn with the Slot the bot just asked for. It clears the Turn's state
+    # (an endpointer may keep call-level memory across Turns).
+    def reset(self, expected_slot: str) -> None:
         ...
 
 

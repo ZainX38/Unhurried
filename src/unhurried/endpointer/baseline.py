@@ -9,13 +9,13 @@ class Baseline:
         # Calls reset() as state needs to be cleared for each Turn
         self.reset()
 
-    # Resets the state
-    def reset(self) -> None:
+    # Resets the state. The Baseline only looks at silence, so it ignores the Slot.
+    def reset(self, expected_slot: str = "") -> None:
         self.silence_ms = 0
         self.heard_speech = False
             
 
-    def step(self, is_speech: bool, frame_ms: int, transcript: str) -> Decision:
+    def step(self, is_speech: bool, frame_ms: int, transcript: str | None) -> Decision:
         if self.silence_ms >= self.threshold_ms:
             return Decision(Action.END, f"already ended: silence {self.silence_ms}ms >= {self.threshold_ms}ms")
 
