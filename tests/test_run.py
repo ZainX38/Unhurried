@@ -6,7 +6,7 @@ import pytest
 from eval.audio import write_wav
 from eval.run import (
     ORACLE_DELAY_MS, Clip, baseline_factory, load_clips, oracle_transcripts, parse_pieces, patient_factory,
-    replay, run, stt_style,
+    replay, run, stt_style, transcribe,
 )
 from unhurried.endpointer.baseline import Baseline
 from unhurried.vad import FRAME_MS, FRAME_SAMPLES
@@ -183,3 +183,63 @@ def test_patient_factory_builds_a_fresh_patient_with_its_settings() -> None:
     a, b = factory(), factory()
     assert a is not b
     assert (a.base_ms, a.complete_ms) == (700, 400)
+
+
+# --- real STT transcripts (ticket 06) -------------------------------------------------------
+
+class CountingSTT:
+    """Fake STT: its transcript says how many frames it has been fed since reset()."""
+
+    def __init__(self) -> None:
+        self.resets = 0
+        self.fed = 0
+
+    def reset(self) -> None:
+        self.resets += 1
+        self.fed = 0
+
+    def feed(self, frame: np.ndarray) -> None:
+        assert len(frame) == FRAME_SAMPLES
+        self.fed += 1
+
+    def transcript(self) -> str:
+        return f"frame {self.fed}"
+
+
+def test_transcribe_gives_the_transcript_after_each_frame() -> None:
+    stt = CountingSTT()
+    samples = np.zeros(3 * FRAME_SAMPLES + 100, dtype=np.float32)  # trailing partial frame is dropped
+    assert transcribe(samples, stt) == ("frame 1", "frame 2", "frame 3")
+    assert stt.resets == 1
+
+
+def test_load_clips_with_stt_lines_transcripts_up_with_the_mask(tmp_path: Path) -> None:
+    [clip] = load_clips(write_tiny_manifest(tmp_path), CountingSTT())
+    assert len(clip.transcripts) == len(clip.mask)
+    assert clip.transcripts[0] == "frame 1"
+    assert load_clips(write_tiny_manifest(tmp_path))[0].transcripts is None  # oracle: no STT run
+
+
+def test_stt_transcripts_win_over_the_oracle_pieces() -> None:
+    mask = frames((S, 2), (Q, 3))
+    clip = Clip("x.wav", "fluent", "L", "reason", ms(2), mask, pieces=((ms(1), "oracle text"),),
+                transcripts=("a", "b", "c", "d", "e"))
+    assert list(clip.frame_transcripts()) == ["a", "b", "c", "d", "e"]
+    r = Recorder()
+    replay(mask, r, transcripts=clip.frame_transcripts())
+    assert r.transcripts == ["a", "b", "c", "d", "e"]
+
+
+def test_replay_rejects_transcripts_of_the_wrong_length() -> None:
+    with pytest.raises(ValueError, match="2 transcripts for 3 frames"):
+        replay(frames((S, 3)), Baseline(700), transcripts=["a", "b"])
+
+
+def test_baseline_records_do_not_depend_on_the_transcripts() -> None:
+    mask = frames((Q, 16), (S, 20), (Q, 32), (S, 20), (Q, 250))
+    oracle = Clip("x.wav", "stammered", "A1", "account_number", ms(88), mask,
+                  pieces=((ms(36), "my account number is"), (ms(88), "4 5 2 1 8 8 3 0")))
+    words = Clip(*[getattr(oracle, f) for f in ("file", "group", "line", "slot", "true_end_ms", "mask")],
+                 transcripts=tuple("for to won" for _ in mask))
+    for t in (300, 700, 3000):
+        assert run([oracle], baseline_factory(t)) == run([words], baseline_factory(t))

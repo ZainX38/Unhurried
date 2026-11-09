@@ -223,3 +223,6 @@ __marimo__/
 eval/data/recordings/originals/
 eval/data/clips/
 eval/data/manifest.csv
+
+# Vosk model (download with eval/download_model.py)
+models/

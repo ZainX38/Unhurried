@@ -251,3 +251,18 @@ def test_patience_never_exceeds_the_ceiling() -> None:
     decisions = silence(p, text, 200)
     assert first_end(decisions) == frames_for(CEILING_MS)
     assert f"capped at {CEILING_MS}" in decisions[frames_for(CEILING_MS) - 1].reason
+
+
+# --- transcript rewrites (ticket 06: a Vosk final can rewrite its partial) -------------------
+
+def test_completeness_is_recomputed_every_frame_from_the_current_transcript() -> None:
+    # 8 digits in the partial, then the segment's final drops one ("two" -> "the"): no longer COMPLETE.
+    p = turn("account_number")
+    speech(p, ACCOUNT_8)
+    silence(p, ACCOUNT_8, frames_for(700) - 5)
+    rewritten = "my account number is 4 5 the 7 3 6 1 0"
+    later = silence(p, rewritten, frames_for(6000))
+    assert first_end(later) is None
+    assert "7/8 digits" in later[-1].reason
+    # And back: a rewrite that completes the answer ends it on the next frames.
+    assert first_end(silence(p, ACCOUNT_8, 1)) == 1

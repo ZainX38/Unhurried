@@ -1,8 +1,11 @@
 import csv
+from dataclasses import replace
 from pathlib import Path
 
 from eval.run import Clip, load_clips
-from eval.sweep import curve, meets_targets, misses_table, patient_points, summary_table, sweep, write_outputs
+from eval.sweep import (
+    curve, meets_targets, misses_table, patient_points, summary_table, sweep, vosk_waits_longer_table, write_outputs,
+)
 from tests.test_run import frames, ms, write_tiny_manifest
 
 S, Q = True, False
@@ -112,3 +115,46 @@ def test_misses_table_lists_each_miss_once_with_its_settings() -> None:
 def test_without_patients_no_results_md(tmp_path: Path) -> None:
     write_outputs(sweep([fluent_account_clip()], [700]), tmp_path)
     assert not (tmp_path / "results.md").exists()
+
+
+# --- Vosk side by side (ticket 06) -----------------------------------------------------------
+
+def with_vosk_text(clip: Clip, text: str) -> Clip:
+    """The same clip, with a fixed "Vosk" transcript from the first frame on."""
+    return replace(clip, transcripts=tuple(text for _ in clip.mask))
+
+
+def test_misheard_digit_makes_the_patient_wait_where_the_baseline_ended() -> None:
+    fluent = fluent_account_clip()
+    # "ford" is not a digit or homophone, so only 7/8 digits are heard.
+    misheard = with_vosk_text(fluent, "my account number is ford five two seven three six one oh")
+    points = sweep([fluent], [700])
+    patients = patient_points([fluent], [700]) + patient_points([misheard], [700], stt="vosk")
+    table = vosk_waits_longer_table(points, patients, [misheard])
+    assert table.count("f.wav") == 1
+    assert "never ended; words INCOMPLETE: 7/8 digits" in table
+    assert "PROMPT at" in table
+    assert "`my account number is ford five two seven three six one oh`" in table
+
+
+def test_vosk_heard_right_is_not_listed() -> None:
+    fluent = fluent_account_clip()
+    heard = with_vosk_text(fluent, "my account number is four five two seven three six one zero")
+    patients = patient_points([fluent], [700]) + patient_points([heard], [700], stt="vosk")
+    assert vosk_waits_longer_table(sweep([fluent], [700]), patients, [heard]) == "None."
+
+
+def test_results_md_shows_oracle_and_vosk_side_by_side(tmp_path: Path) -> None:
+    oracle = [fluent_account_clip(), stammered_account_clip()]
+    vosk = [with_vosk_text(c, "my account number is four five two seven three six one zero") for c in oracle]
+    patients = patient_points(oracle, [700]) + patient_points(vosk, [700], stt="vosk")
+    out = tmp_path / "results"
+    write_outputs(sweep(oracle, [700, 3000]), out, patients, vosk)
+    md = (out / "results.md").read_text(encoding="utf-8")
+    assert "**Patient (oracle transcripts), complete 700 ms**" in md
+    assert "**Patient (Vosk transcripts), complete 700 ms**" in md
+    assert "## Fluent clips where Vosk made the Patient wait longer than the Baseline" in md
+    assert "--stt vosk" in md
+    with open(out / "patient_clips.csv", newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert [r["stt"] for r in rows] == ["oracle", "oracle", "vosk", "vosk"]

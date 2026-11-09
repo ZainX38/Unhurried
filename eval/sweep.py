@@ -8,17 +8,23 @@ through the Patient endpointer at each `complete_ms` setting, and writes:
 - eval/results/sweep.png        stammered cut-off rate (y) vs fluent median wait (x), one point per threshold,
                                 plus one point per Patient setting
 - eval/results/results.md       Patient vs Baseline: summary, chart, per group, every Patient miss, caveats
-- eval/results/patient_clips.csv  every Patient per-clip record, with a complete_ms column
+- eval/results/patient_clips.csv  every Patient per-clip record, with complete_ms and stt columns
 - eval/results/cutoff_by_threshold.png  cut-off rate (y) vs threshold (x), one line per group
+
+With `--stt vosk` (ticket 06) every clip is also transcribed by Vosk once, and the Patient
+runs on BOTH transcript sources, side by side. The Baseline ignores transcripts, so its
+sweep is the same either way.
 
 Usage:
     uv run python -m eval.sweep
+    uv run python -m eval.sweep --stt vosk
 """
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+import statistics
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import matplotlib
@@ -29,8 +35,13 @@ import matplotlib.pyplot as plt  # noqa: E402
 from eval import metrics  # noqa: E402
 from eval.run import (  # noqa: E402
     DEFAULT_MANIFEST, GROUPS, ORACLE_DELAY_MS, RECORD_COLUMNS, RESULTS_DIR,
-    Clip, baseline_factory, fmt_ms, fmt_rate, group_table, load_clips, patient_factory, run, write_csv,
+    Clip, baseline_factory, fmt_ms, fmt_rate, group_table, load_clips, make_stt, patient_factory, run,
+    stt_style, write_csv,
 )
+from unhurried.endpointer.completeness import completeness  # noqa: E402
+from unhurried.endpointer.types import Action  # noqa: E402
+from unhurried.stt import VOSK_MODEL_NAME  # noqa: E402
+from unhurried.vad import FRAME_MS  # noqa: E402
 
 THRESHOLDS_MS = [300, 500, 700, 1000, 1500, 2000, 3000, 4000]
 PATIENT_COMPLETE_MS = [700, 400]  # Patient settings plotted against the curve
@@ -75,15 +86,31 @@ class PatientPoint:
     complete_ms: int
     records: list[dict]
     stats: dict  # group -> metrics.GroupStats
+    stt: str = "oracle"  # transcript source: "oracle" or "vosk"
 
 
-def patient_points(clips: list[Clip], complete_values: list[int] = PATIENT_COMPLETE_MS) -> list[PatientPoint]:
-    """Replay the same clips through the Patient endpointer at each complete_ms setting."""
+def patient_points(clips: list[Clip], complete_values: list[int] = PATIENT_COMPLETE_MS,
+                   stt: str = "oracle") -> list[PatientPoint]:
+    """Replay the same clips through the Patient endpointer at each complete_ms setting.
+    `stt` only labels the points; the transcripts are whatever the clips carry."""
     points = []
     for c in complete_values:
         records = run(clips, patient_factory(c))
-        points.append(PatientPoint(c, records, metrics.summarize(records)))
+        points.append(PatientPoint(c, records, metrics.summarize(records), stt))
     return points
+
+
+STT_NAMES = {"oracle": "oracle", "vosk": "Vosk"}
+
+
+def patient_label(pp: PatientPoint, mixed: bool) -> str:
+    """"Patient, complete 700 ms", or with the transcript source when both sources are shown."""
+    source = f" ({STT_NAMES[pp.stt]} transcripts)" if mixed else ""
+    return f"Patient{source}, complete {pp.complete_ms} ms"
+
+
+def is_mixed(patients: list[PatientPoint]) -> bool:
+    return len({pp.stt for pp in patients}) > 1
 
 
 def meets_targets(p: SweepPoint | PatientPoint) -> bool:
@@ -151,7 +178,10 @@ def curve(points: list[SweepPoint]) -> list[tuple[int, float, float]]:
 
 def plot(points: list[SweepPoint], path: Path, patients: list[PatientPoint] = ()) -> None:
     data = curve(points)
-    patient_data = [(pp.complete_ms, *xy) for pp in patients if (xy := chart_xy(pp.stats)) is not None]
+    patient_data = [(pp.complete_ms, *xy) for pp in patients
+                    if pp.stt == "oracle" and (xy := chart_xy(pp.stats)) is not None]
+    vosk_data = [(pp.complete_ms, *xy) for pp in patients
+                 if pp.stt == "vosk" and (xy := chart_xy(pp.stats)) is not None]
     fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
     fig.patch.set_facecolor(SURFACE)
     ax.set_facecolor(SURFACE)
@@ -189,11 +219,20 @@ def plot(points: list[SweepPoint], path: Path, patients: list[PatientPoint] = ()
         ax.annotate(f"{c} ms", (x, y * 100), xytext=(0, -10), textcoords="offset points",
                     ha="center", va="top", color=INK, fontsize=8)
 
-    if patient_data:
+    for c, x, y in vosk_data:
+        # Same colour, hollow: same endpointer, different transcripts. Labelled above to avoid the oracle label.
+        ax.scatter([x], [y * 100], s=90, marker="D", facecolor=SURFACE, edgecolor=PATIENT, linewidth=2, zorder=5,
+                   label="Patient on Vosk transcripts" if c == vosk_data[0][0] else None)
+        ax.annotate(f"{c} ms", (x, y * 100), xytext=(0, 9), textcoords="offset points",
+                    ha="center", va="bottom", color=INK, fontsize=8)
+
+    if patient_data or vosk_data:
         fig.suptitle("Patient endpointer vs the fixed-threshold curve", color=INK, fontsize=11, x=0.02, ha="left")
-        ax.set_title("Blue: one point per fixed silence threshold (ms). Orange: the Patient, which starts at 700 ms\n"
-                     "and waits longer only when the words say the answer isn't finished.",
-                     color=INK_SECONDARY, fontsize=9, loc="left", pad=10)
+        subtitle = ("Blue: one point per fixed silence threshold (ms). Orange: the Patient, which starts at 700 ms\n"
+                    "and waits longer only when the words say the answer isn't finished.")
+        if vosk_data:
+            subtitle += " Filled: oracle transcripts. Hollow: Vosk."
+        ax.set_title(subtitle, color=INK_SECONDARY, fontsize=9, loc="left", pad=10)
         ax.legend(loc="center right", frameon=False, fontsize=8, labelcolor=INK_SECONDARY)
     else:
         fig.suptitle("Baseline sweep: raising the fixed timeout costs fluent callers",
@@ -202,7 +241,7 @@ def plot(points: list[SweepPoint], path: Path, patients: list[PatientPoint] = ()
     ax.set_xlabel("fluent median wait time (ms)", color=INK_SECONDARY, fontsize=9)
     ax.set_ylabel("stammered cut-off rate (%)", color=INK_SECONDARY, fontsize=9)
     ax.set_ylim(-3, 105)
-    ax.set_xlim(0, max([x for _, x, _ in data] + [x for _, x, _ in patient_data], default=1000) * 1.08)
+    ax.set_xlim(0, max([x for _, x, _ in data + patient_data + vosk_data], default=1000) * 1.08)
     ax.grid(True, color=GRID, lw=0.8, zorder=0)
     ax.set_axisbelow(True)
     ax.tick_params(colors=MUTED, labelsize=8, length=0)
@@ -295,7 +334,8 @@ def comparison_table(points: list[SweepPoint], patients: list[PatientPoint]) -> 
                  and st.cut_off_rate is not None and st.cut_off_rate < TARGET_STAMMERED_CUT_OFF), None)
     if safe is not None and safe.threshold_ms != 700:
         rows.append((f"Baseline {safe.threshold_ms} ms (first to meet the stammered target)", safe.stats))
-    rows += [(f"**Patient, complete {pp.complete_ms} ms**", pp.stats) for pp in patients]
+    mixed = is_mixed(patients)
+    rows += [(f"**{patient_label(pp, mixed)}**", pp.stats) for pp in patients]
 
     lines = [
         f"| endpointer | stammered cut-off (target < {TARGET_STAMMERED_CUT_OFF:.0%}) "
@@ -316,41 +356,138 @@ def comparison_table(points: list[SweepPoint], patients: list[PatientPoint]) -> 
 
 def misses_table(patients: list[PatientPoint]) -> str:
     """Every clip the Patient cut off or never ended, with its reason, once per setting it happens in."""
-    seen: dict[tuple[str, str, str], list[int]] = {}
+    seen: dict[tuple[str, str, str, str], list[int]] = {}
     for pp in patients:
         for r in pp.records:
             if r["outcome"] != "ended":
-                seen.setdefault((r["file"], r["outcome"], r["reason"]), []).append(pp.complete_ms)
+                seen.setdefault((r["file"], STT_NAMES[pp.stt], r["outcome"], r["reason"]), []).append(pp.complete_ms)
     if not seen:
         return "None."
-    lines = ["| clip | outcome | at complete_ms | reason at the END |", "| --- | --- | --- | --- |"]
-    for (file, outcome, reason), settings in seen.items():
-        lines.append(f"| {file} | {outcome} | {', '.join(map(str, settings))} | {reason or '-'} |")
+    lines = ["| clip | transcripts | outcome | at complete_ms | reason at the END |", "| --- | --- | --- | --- | --- |"]
+    for (file, source, outcome, reason), settings in seen.items():
+        lines.append(f"| {file} | {source} | {outcome} | {', '.join(map(str, settings))} | {reason or '-'} |")
     return "\n".join(lines)
 
 
+def first_prompt_ms(clip: Clip, complete_ms: int) -> int | None:
+    """When a fresh Patient first PROMPTs on this clip (end of that frame), or None. Stops at END."""
+    p = patient_factory(complete_ms)()
+    p.reset(clip.slot)
+    for i, (is_speech, transcript) in enumerate(zip(clip.mask, clip.frame_transcripts())):
+        action = p.step(is_speech, FRAME_MS, transcript).action
+        if action is Action.PROMPT:
+            return (i + 1) * FRAME_MS
+        if action is Action.END:
+            return None
+    return None
+
+
+def fmt_wait(r: dict) -> str:
+    """Wait in ms for an ended clip, otherwise the outcome ("no_end", "cut_off")."""
+    return f"{r['wait_ms']}" if r["outcome"] == "ended" else r["outcome"]
+
+
+def vosk_waits_longer_table(points: list[SweepPoint], patients: list[PatientPoint], clips: list[Clip]) -> str:
+    """Every fluent clip where the Patient on Vosk transcripts waited longer than the 700 ms Baseline
+    (or never ended where the Baseline did), with the Vosk transcript the Patient was looking at."""
+    base = next((p for p in points if p.threshold_ms == 700), None)
+    if base is None:
+        return "Not computed: the sweep has no 700 ms threshold."
+    base_by_file = {r["file"]: r for r in base.records}
+    oracle = {(pp.complete_ms, r["file"]): r for pp in patients if pp.stt == "oracle" for r in pp.records}
+    clip_by_file = {c.file: c for c in clips}
+
+    lines = [
+        "| clip | complete_ms | Baseline 700 wait (ms) | Patient oracle wait (ms) | Patient Vosk wait (ms) "
+        "| Patient Vosk, why | Vosk transcript at that moment |",
+        "| --- | ---: | ---: | ---: | ---: | --- | --- |",
+    ]
+    n = 0
+    for pp in (pp for pp in patients if pp.stt == "vosk"):
+        for r in pp.records:
+            b = base_by_file[r["file"]]
+            if r["group"] != "fluent" or b["outcome"] != "ended":
+                continue
+            longer = r["outcome"] == "no_end" or (r["outcome"] == "ended" and r["wait_ms"] > b["wait_ms"])
+            if not longer:
+                continue
+            clip = clip_by_file[r["file"]]
+            frame = r["end_ms"] // FRAME_MS - 1 if r["end_ms"] is not None else len(clip.mask) - 1
+            transcript = clip.frame_transcripts()[frame]
+            if r["outcome"] == "ended":
+                why = r["reason"]
+            else:  # no END: say what the words looked like at the end of the clip, and whether it prompted
+                status, clue = completeness(transcript, clip.slot)
+                prompt = first_prompt_ms(clip, pp.complete_ms)
+                why = f"never ended; words {status.name}: {clue}"
+                if prompt is not None:
+                    why += f"; PROMPT at {prompt - clip.true_end_ms} ms after the true end"
+            o = oracle.get((pp.complete_ms, r["file"]))
+            lines.append(f"| {r['file']} | {pp.complete_ms} | {fmt_wait(b)} | {fmt_wait(o) if o else '-'} "
+                         f"| {fmt_wait(r)} | {why} | `{transcript}` |")
+            n += 1
+    return "\n".join(lines) if n else "None."
+
+
+def vosk_latency_ms(clips: list[Clip]) -> list[int]:
+    """Fluent clips only: time from the true end until the transcript ends with the clip's final
+    last word and keeps ending with it (the start of that last stable run of frames).
+    Negative means Vosk had the word before the energy fell below the VAD threshold."""
+    out = []
+    for c in clips:
+        if c.group != "fluent" or not c.transcripts or not c.transcripts[-1]:
+            continue
+        last_word = c.transcripts[-1].split()[-1]
+        stable_from = len(c.transcripts)
+        while stable_from > 0 and c.transcripts[stable_from - 1].endswith(last_word):
+            stable_from -= 1
+        out.append((stable_from + 1) * FRAME_MS - c.true_end_ms)
+    return out
+
+
 # Short factual caveats only. Interpretation goes in the hand-written eval/results/discussion.md.
-CAVEATS = f"""\
-- Transcripts are an oracle, not STT: each piece's exact text appears {ORACLE_DELAY_MS} ms after its speech
-  ends, lowercased and without punctuation. Real STT (ticket 06) adds mishearings and its own latency.
-- A COMPLETE answer can only end the Turn once its last words are in the transcript, so no wait here is
-  shorter than {ORACLE_DELAY_MS} ms, whatever `complete_ms` is.
-- Pauses clips (P_*) have no piece timing and get `transcript=None`: timing-only, the same rule as the
-  700 ms Baseline.
-- The oracle text has no repeated words and every clip is one Turn, so the repetition bonus and call
-  memory never fire in this run. They are tested only in `tests/test_patient.py`.
-"""
+def caveats(vosk_clips: list[Clip] | None = None) -> str:
+    out = [
+        f"- Oracle transcripts: each piece's exact text appears {ORACLE_DELAY_MS} ms after its speech ends,",
+        "  lowercased and without punctuation. With the oracle, a COMPLETE answer can only end the Turn once its",
+        f"  last words are in, so no oracle wait is shorter than {ORACLE_DELAY_MS} ms, whatever `complete_ms` is.",
+        "- With the oracle, pauses clips (P_*) have no piece timing and get `transcript=None`: timing-only, the",
+        "  same rule as the 700 ms Baseline.",
+        "- The oracle text has no repeated words and every clip is one Turn, so the repetition bonus and call",
+        "  memory never fire on oracle transcripts. They are tested in `tests/test_patient.py`.",
+    ]
+    if vosk_clips is not None:
+        lat = vosk_latency_ms(vosk_clips)
+        lat_text = (f"median {statistics.median(lat):.0f} ms, range {min(lat)} to {max(lat)} ms, over {len(lat)} fluent clips"
+                    if lat else "not measurable on these clips")
+        out += [
+            f"- Vosk transcripts: `{VOSK_MODEL_NAME}`, offline, fed the same 32 ms frames as the VAD. The",
+            "  transcript at each frame is every finished Vosk segment plus the current partial. Vosk's segment",
+            "  ends are transcript chunks only and never end a Turn. A segment's final text can rewrite its",
+            "  partial, so the transcript can change backwards; the Patient re-reads it on every frame.",
+            "- With Vosk, every clip has words, P_* included, so no clip runs timing-only.",
+            f"- Vosk latency (true end until the transcript's final last word appears and stays): {lat_text}.",
+            "- With Vosk, any word transcribed twice in a row fires the repetition bonus (doubled digit words",
+            "  are skipped), so the bonus can fire here even though the clips contain no real repetitions.",
+        ]
+    return "\n".join(out) + "\n"
 
 
-def results_md(points: list[SweepPoint], patients: list[PatientPoint]) -> str:
+def results_md(points: list[SweepPoint], patients: list[PatientPoint], vosk_clips: list[Clip] | None = None) -> str:
     n = len(patients[0].records) if patients else 0
+    mixed = is_mixed(patients)
+    command = "uv run python -m eval.sweep" + (" --stt vosk" if vosk_clips is not None else "")
     out = [
         "# Results: Patient endpointer vs the Baseline",
         "",
-        "Generated by `uv run python -m eval.sweep`; do not edit by hand. Interpretation: [discussion.md](discussion.md).",
+        f"Generated by `{command}`; do not edit by hand. Interpretation: [discussion.md](discussion.md).",
         "",
         f"{n} clips from the manifest, same VAD, frames and scoring as [the Baseline sweep](sweep.md).",
         "`complete_ms` is the silence that ends a COMPLETE answer; base patience is 700 ms.",
+    ]
+    if mixed:
+        out.append("The Patient runs twice on the same audio: once on oracle transcripts, once on Vosk's.")
+    out += [
         "",
         "## Summary",
         "",
@@ -362,12 +499,24 @@ def results_md(points: list[SweepPoint], patients: list[PatientPoint]) -> str:
         "",
     ]
     for pp in patients:
-        out += [f"### Patient, complete {pp.complete_ms} ms", "", group_table(pp.stats), ""]
-    out += ["## Every Patient miss", "", misses_table(patients), "", "## Caveats", "", CAVEATS]
+        out += [f"### {patient_label(pp, mixed)}", "", group_table(pp.stats), ""]
+    out += ["## Every Patient miss", "", misses_table(patients), ""]
+    if vosk_clips is not None:
+        out += [
+            "## Fluent clips where Vosk made the Patient wait longer than the Baseline",
+            "",
+            "Compared with the Baseline at 700 ms, on the same clip. The transcript is what Vosk had at the END,",
+            "or at the end of the clip when the Patient never ended.",
+            "",
+            vosk_waits_longer_table(points, patients, vosk_clips),
+            "",
+        ]
+    out += ["## Caveats", "", caveats(vosk_clips)]
     return "\n".join(out)
 
 
-def write_outputs(points: list[SweepPoint], out_dir: Path, patients: list[PatientPoint] = ()) -> None:
+def write_outputs(points: list[SweepPoint], out_dir: Path, patients: list[PatientPoint] = (),
+                  vosk_clips: list[Clip] | None = None) -> None:
     n = len(points[0].records) if points else 0
     md = [
         "# Baseline threshold sweep",
@@ -396,9 +545,10 @@ def write_outputs(points: list[SweepPoint], out_dir: Path, patients: list[Patien
     plot(points, out_dir / "sweep.png", list(patients))
     plot_cutoff_by_threshold(points, out_dir / "cutoff_by_threshold.png")
     if patients:
-        (out_dir / "results.md").write_text(results_md(points, list(patients)), encoding="utf-8", newline="\n")
-        rows = [{"complete_ms": pp.complete_ms, **r} for pp in patients for r in pp.records]
-        write_csv(out_dir / "patient_clips.csv", rows, ["complete_ms", *RECORD_COLUMNS])
+        (out_dir / "results.md").write_text(results_md(points, list(patients), vosk_clips),
+                                            encoding="utf-8", newline="\n")
+        rows = [{"complete_ms": pp.complete_ms, "stt": pp.stt, **r} for pp in patients for r in pp.records]
+        write_csv(out_dir / "patient_clips.csv", rows, ["complete_ms", "stt", *RECORD_COLUMNS])
 
 
 def main() -> None:
@@ -408,16 +558,24 @@ def main() -> None:
     parser.add_argument("--thresholds", type=int, nargs="+", default=THRESHOLDS_MS)
     parser.add_argument("--patient-complete-ms", type=int, nargs="*", default=PATIENT_COMPLETE_MS,
                         help="Patient settings to plot; pass none to plot the Baseline only")
+    parser.add_argument("--stt", choices=["oracle", "vosk"], default="oracle",
+                        help="vosk: also run the Patient on Vosk transcripts, next to the oracle")
     args = parser.parse_args()
 
-    clips = load_clips(args.manifest)
-    points = sweep(clips, args.thresholds)
-    patients = patient_points(clips, args.patient_complete_ms)
-    write_outputs(points, args.out, patients)
+    loaded = load_clips(args.manifest, make_stt(args.stt))
+    oracle_clips = [replace(c, transcripts=None) for c in loaded]  # Vosk text, if any, is set aside here
+    vosk_clips = loaded if args.stt == "vosk" else None
+
+    points = sweep(oracle_clips, args.thresholds)  # the Baseline ignores transcripts: same as before
+    patients = patient_points(oracle_clips, args.patient_complete_ms)
+    if vosk_clips is not None:
+        patients += patient_points(vosk_clips, args.patient_complete_ms, stt="vosk")
+    write_outputs(points, args.out, patients, vosk_clips)
     print(sweep_table(points))
     for pp in patients:  # plain ASCII: the Windows console can't print the table's symbols
         fluent = pp.stats.get("fluent")
-        print(f"Patient complete {pp.complete_ms} ms: stammered cut-off {fmt_rate(pp.stats.get('stammered'))}, "
+        print(f"Patient ({pp.stt}) complete {pp.complete_ms} ms: "
+              f"stammered cut-off {fmt_rate(pp.stats.get('stammered'))}, "
               f"fluent median wait {fmt_ms(fluent.wait_median if fluent else None)} ms")
     print(f"-> {args.out / 'sweep.md'}, sweep_clips.csv, sweep.png"
           + (", results.md, patient_clips.csv" if patients else ""))
