@@ -37,7 +37,7 @@ The caller speaking while the system is replying, which makes the system stop an
 _Avoid_: Interruption
 
 **Completeness**:
-Whether the words so far in a Turn form a finished answer to the current Slot: Complete, Incomplete or Unknown.
+Whether the words so far in a Turn form a finished answer to the current Slot: Complete, Incomplete or Unsure.
 _Avoid_: Confidence, finished-ness
 
 **Ceiling**:
