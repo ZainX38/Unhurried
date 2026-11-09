@@ -8,7 +8,12 @@ class Status(Enum):
 
 
 # Words that can't end a finished answer: the caller is mid-sentence.
-DANGLING = {"is", "its", "it's", "and", "the", "my", "a", "to", "of", "double", "triple"}
+# Prepositions are included because an answer can't end on one ("I'm calling about").
+DANGLING = {
+    "is", "its", "it's", "and", "the", "my", "a",
+    "about", "for", "with", "of", "to", "from",
+    "double", "triple",
+}
 
 # Hesitation sounds: the caller is thinking, not finished.
 FILLERS = {"um", "uh", "er", "erm", "hmm"}
