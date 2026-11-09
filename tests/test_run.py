@@ -2,8 +2,11 @@ import csv
 from pathlib import Path
 
 import numpy as np
+import pytest
 from eval.audio import write_wav
-from eval.run import Clip, baseline_factory, load_clips, replay, run
+from eval.run import (
+    ORACLE_DELAY_MS, Clip, baseline_factory, load_clips, oracle_transcripts, parse_pieces, replay, run, stt_style,
+)
 from unhurried.endpointer.baseline import Baseline
 from unhurried.vad import FRAME_MS, FRAME_SAMPLES
 
@@ -63,19 +66,90 @@ def test_run_scores_a_fluent_clip_with_its_wait() -> None:
     assert record["wait_ms"] == ms(22)
 
 
-def test_each_clip_gets_a_fresh_endpointer_built_from_its_slot() -> None:
-    built: list[str] = []
+class Recorder(Baseline):
+    """A 700 ms Baseline that remembers its reset() Slot and every transcript it was given."""
 
-    def factory(slot: str) -> Baseline:
-        built.append(slot)
-        return Baseline(700)
+    def __init__(self) -> None:
+        self.slots: list[str] = []
+        self.transcripts: list[str | None] = []
+        super().__init__(700)
+
+    def reset(self, expected_slot: str = "") -> None:
+        self.slots.append(expected_slot)
+        super().reset(expected_slot)
+
+    def step(self, is_speech: bool, frame_ms: int, transcript: str | None):
+        self.transcripts.append(transcript)
+        return super().step(is_speech, frame_ms, transcript)
+
+
+def test_each_clip_gets_a_fresh_endpointer_reset_to_its_slot() -> None:
+    built: list[Recorder] = []
+
+    def factory() -> Recorder:
+        built.append(Recorder())
+        return built[-1]
 
     mask = frames((S, 5), (Q, 30))
     clips = [Clip(f"{s}.wav", "fluent", "L", s, ms(5), mask) for s in ("account_number", "date_of_birth")]
     records = run(clips, factory)
-    assert built == ["account_number", "date_of_birth"]
+    assert len(built) == 2
+    # [""] is the constructor's own reset(); then the harness resets to the clip's Slot.
+    assert [r.slots[1:] for r in built] == [["account_number"], ["date_of_birth"]]
     # Same result for both: no state carried over from the first clip.
     assert records[0]["end_ms"] == records[1]["end_ms"]
+
+
+# --- oracle transcript ---------------------------------------------------------------------
+
+def test_stt_style_lowercases_and_drops_punctuation_but_keeps_apostrophes() -> None:
+    assert stt_style("Yes, that's right.") == "yes that's right"
+    assert stt_style("No,  it's 4 5") == "no it's 4 5"
+    assert stt_style("4-") == "4-"  # a cut-off word keeps its hyphen
+
+
+def test_piece_text_appears_oracle_delay_after_its_speech_ends() -> None:
+    pieces = ((ms(10), "My account number is"), (ms(30), "4 5 2 1"))
+    transcripts = oracle_transcripts(60, pieces)
+    first_reveal = (ms(10) + ORACLE_DELAY_MS) // FRAME_MS  # 300 ms is not a whole frame: rounds up
+    assert transcripts[first_reveal - 2] == ""  # the last frame that ends before 620 ms
+    assert transcripts[first_reveal - 1] == ""
+    assert transcripts[first_reveal] == "my account number is"
+    assert transcripts[-1] == "my account number is 4 5 2 1"
+
+
+def test_reveal_frame_is_the_first_whose_end_reaches_the_reveal_time() -> None:
+    # Piece ends at 320 ms -> text out at 620 ms. Frame 19 ends at 640 ms, frame 18 at 608 ms.
+    transcripts = oracle_transcripts(25, ((320, "yes"),))
+    assert transcripts[18] == ""
+    assert transcripts[19] == "yes"
+
+
+def test_clip_without_pieces_is_timing_only() -> None:
+    assert oracle_transcripts(3, None) == [None, None, None]
+
+
+def test_replay_feeds_the_oracle_transcript_frame_by_frame() -> None:
+    mask = frames((Q, 5), (S, 10), (Q, 30))
+    r = Recorder()
+    replay(mask, r, pieces=((ms(15), "Yes."),))
+    reveal = (ms(15) + ORACLE_DELAY_MS + FRAME_MS - 1) // FRAME_MS  # frames until text is out
+    assert r.transcripts[: reveal - 1] == [""] * (reveal - 1)
+    assert r.transcripts[reveal - 1] == "yes"
+
+
+def test_replay_without_pieces_passes_none() -> None:
+    r = Recorder()
+    replay(frames((S, 2), (Q, 3)), r)
+    assert r.transcripts == [None] * 5
+
+
+def test_parse_pieces_reads_the_manifest_columns() -> None:
+    assert parse_pieces("100;250", "it's|4 5") == ((100, "it's"), (250, "4 5"))
+    assert parse_pieces("", "") is None
+    assert parse_pieces(None, None) is None  # older manifest without the columns
+    with pytest.raises(ValueError, match="2 piece ends but 1"):
+        parse_pieces("100;250", "it's")
 
 
 # --- load_clips: a tiny real WAV + manifest ----------------------------------------------

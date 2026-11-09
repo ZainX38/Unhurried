@@ -2,9 +2,14 @@
 
 Each WAV is read as it is (no padding: make_data already gives every clip a
 500 ms lead-in and an 8 s room-tone tail), cut into 32 ms frames, labelled by
-the energy VAD, and fed frame by frame to a fresh endpointer built for that
-clip's Slot. The time of the FIRST `END` is recorded; no END means "no end".
-Scoring (Cut-off / Wait time / per-group stats) is eval/metrics.py.
+the energy VAD, and fed frame by frame to a fresh endpointer that has been
+`reset()` to that clip's Slot. The time of the FIRST `END` is recorded; no END
+means "no end". Scoring (Cut-off / Wait time / per-group stats) is eval/metrics.py.
+
+Oracle transcript (until real STT, ticket 06): for clips with piece timing
+(fluent, stammered), each piece's text is revealed ORACLE_DELAY_MS after that
+piece's speech ends, lowercased and without punctuation like Vosk output.
+Clips without piece timing (the P_* takes) get transcript=None: timing-only.
 
 Usage:
     uv run python -m eval.run --threshold 700
@@ -31,16 +36,37 @@ RESULTS_DIR = EVAL_DIR / "results"
 GROUPS = ("fluent", "stammered", "pauses")
 RECORD_COLUMNS = ["file", "group", "line", "slot", "true_end_ms", "end_ms", "outcome", "wait_ms", "reason"]
 
+# How long after a piece's speech ends its text appears. A guess at streaming STT latency;
+# real Vosk latency is measured in ticket 06.
+ORACLE_DELAY_MS = 300
+
+Pieces = tuple[tuple[int, str], ...]  # (speech end in ms, text) per piece, in order
+
 
 @dataclass(frozen=True)
 class Clip:
-    """One manifest row plus its VAD output. `mask[i]` is frame i (time i*32 to (i+1)*32 ms)."""
+    """One manifest row plus its VAD output. `mask[i]` is frame i (time i*32 to (i+1)*32 ms).
+
+    pieces=None means no piece timing: the clip runs timing-only (transcript=None).
+    """
     file: str
     group: str
     line: str
     slot: str
     true_end_ms: int
     mask: list[bool]
+    pieces: Pieces | None = None
+
+
+def parse_pieces(ends: str | None, texts: str | None) -> Pieces | None:
+    """Manifest columns "1830;3900;7671" and "a|b|c" -> ((1830, "a"), ...). Empty or missing -> None."""
+    if not ends or not texts:
+        return None
+    end_list = [int(e) for e in ends.split(";")]
+    text_list = texts.split("|")
+    if len(end_list) != len(text_list):
+        raise ValueError(f"{len(end_list)} piece ends but {len(text_list)} piece texts: {ends!r} / {texts!r}")
+    return tuple(zip(end_list, text_list))
 
 
 def load_clips(manifest: Path) -> list[Clip]:
@@ -55,30 +81,56 @@ def load_clips(manifest: Path) -> list[Clip]:
             slot=r["slot"],
             true_end_ms=int(r["true_end_ms"]),
             mask=speech_mask(read_wav(manifest.parent / r["file"])),
+            pieces=parse_pieces(r.get("piece_ends_ms"), r.get("piece_texts")),
         )
         for r in rows
     ]
 
 
-def replay(mask: Sequence[bool], endpointer: Endpointer) -> tuple[int | None, str]:
+def stt_style(text: str) -> str:
+    """Make written text look like Vosk output: lowercase, no punctuation, single spaces.
+    Apostrophes stay ("it's" is a word completeness knows)."""
+    kept = "".join(ch for ch in text.lower() if ch.isalnum() or ch in " '-")
+    return " ".join(kept.split())
+
+
+def oracle_transcripts(n_frames: int, pieces: Pieces | None) -> list[str | None]:
+    """The transcript at each frame: every piece whose text is out by the end of that frame
+    (speech end + ORACLE_DELAY_MS), joined. None for every frame when there are no pieces."""
+    if pieces is None:
+        return [None] * n_frames
+    out = []
+    for i in range(n_frames):
+        now = (i + 1) * FRAME_MS
+        out.append(" ".join(stt_style(text) for end, text in pieces if end + ORACLE_DELAY_MS <= now))
+    return out
+
+
+def replay(mask: Sequence[bool], endpointer: Endpointer, pieces: Pieces | None = None) -> tuple[int | None, str]:
     """Feed frames until the first END. Returns (end_ms, reason), or (None, "") if no END in the clip.
 
     end_ms is the END of the frame that produced the decision: that is the
     earliest moment a live system could act on it. PROMPT and CONTINUE both
     mean "keep listening", so only END stops the replay.
     """
+    transcripts = oracle_transcripts(len(mask), pieces)
     for i, is_speech in enumerate(mask):
-        decision = endpointer.step(is_speech, FRAME_MS, "")  # no STT yet (ticket 06)
+        decision = endpointer.step(is_speech, FRAME_MS, transcripts[i])
         if decision.action is Action.END:
             return (i + 1) * FRAME_MS, decision.reason
     return None, ""
 
 
-def run(clips: Iterable[Clip], make_endpointer: Callable[[str], Endpointer]) -> list[dict]:
-    """Replay each clip through a fresh endpointer built from its Slot; return one scored record per clip."""
+def run(clips: Iterable[Clip], make_endpointer: Callable[[], Endpointer]) -> list[dict]:
+    """Replay each clip through a fresh endpointer, reset to the clip's Slot; one scored record per clip.
+
+    Fresh per clip because every clip is a different caller: no call memory carries over.
+    """
     records = []
     for clip in clips:
-        end_ms, reason = replay(clip.mask, make_endpointer(clip.slot))
+        endpointer = make_endpointer()
+        endpointer.reset(clip.slot)
+        end_ms, reason = replay(clip.mask, endpointer, clip.pieces)
         outcome, wait_ms = metrics.outcome(end_ms, clip.true_end_ms)
         records.append({
             "file": clip.file, "group": clip.group, "line": clip.line, "slot": clip.slot,
@@ -88,9 +140,8 @@ def run(clips: Iterable[Clip], make_endpointer: Callable[[str], Endpointer]) -> 
     return records
 
 
-def baseline_factory(threshold_ms: int) -> Callable[[str], Endpointer]:
-    """The Baseline ignores the Slot, but takes it so every endpointer is built the same way."""
-    return lambda slot: Baseline(threshold_ms)
+def baseline_factory(threshold_ms: int) -> Callable[[], Endpointer]:
+    return lambda: Baseline(threshold_ms)
 
 
 # --- Output ------------------------------------------------------------------------------
