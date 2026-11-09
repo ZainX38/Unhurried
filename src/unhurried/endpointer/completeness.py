@@ -42,6 +42,13 @@ YEAR_STARTS = {"nineteen", "twenty"}   # "nineteen ninety nine", "twenty twenty"
 # The Slots the dialogue and the eval manifest use, spelled exactly as in lines.csv.
 SLOTS = {"account_number", "date_of_birth", "reason", "confirm"}
 
+HOMOPHONES = {"for": "4", "to": "2", "too": "2", "won": "1", "ate": "8"}
+
+
+def is_digit_token(w: str) -> bool:
+    """A real digit: a digit word ("four", "oh") or a numeral ("4", "4521")."""
+    return w in DIGIT_WORDS or w.isdigit()
+
 
 def count_digits(words: list[str]) -> int:
     """Digits heard so far: spoken digit words, each numeral character ("4521" adds 4),
@@ -55,6 +62,12 @@ def count_digits(words: list[str]) -> int:
                 total += REPEATS[w] - 1
         elif w in DIGIT_WORDS:
             total += 1
+        elif w in HOMOPHONES:
+            # Only a digit if a neighbour is a real digit: "five to one", not "looking for".
+            before = words[i - 1] if i > 0 else ""
+            after = words[i + 1] if i + 1 < len(words) else ""
+            if is_digit_token(before) or is_digit_token(after):
+                total += 1
         else:
             total += sum(1 for ch in w if ch.isdigit())
     return total

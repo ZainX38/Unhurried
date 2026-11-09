@@ -341,3 +341,11 @@ I also used the skill `/tdd` to implement the class `patient.py` which made it e
 - Single speaker, inserted stammers, rules chosen with these clips in view.
 - **Checked by:** 132 tests pass; Baseline outputs unchanged; a synthetic block test shows the Baseline cuts off and Patient doesn't, with the same fluent wait.
 - **Decided:** `results.md` stays fully generated; my interpretation goes in a hand-written `eval/results/discussion.md`.
+
+
+### STT - Vosk
+
+The next stage is adding an STT, which will be Vosk as it can run locally. The next issues will be mostly be worked through plumbing. 
+
+Vosk check (3 clips): digits come out as words, with 0 as “zero”. Homophones (“for”, “to”) lose digits, so a complete number can look incomplete. The burst before a block was transcribed as an extra “four”. The final text can rewrite the partial (“fourteenth” → “fortieth”), so the transcript isn’t only growing. Vosk split segments mid-block, confirming that segment ends must never end a turn. Measured delay was 0–330 ms, matching the 300 ms oracle guess. Accuracy on free text is poor (“calling about” → “pulling a boat”). Decisions: count digit homophones only next to other digits; recognise a day by its ordinal form; slot grammars as a next step.
+
