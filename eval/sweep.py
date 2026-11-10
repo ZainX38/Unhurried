@@ -38,7 +38,7 @@ from eval.run import (  # noqa: E402
     Clip, baseline_factory, fmt_ms, fmt_rate, load_clips, make_stt, patient_factory, run,
     stt_style, write_csv,
 )
-from unhurried.endpointer.completeness import completeness  # noqa: E402
+from unhurried.endpointer.completeness import DIGIT_WORDS, HOMOPHONES, completeness  # noqa: E402
 from unhurried.endpointer.types import Action  # noqa: E402
 from unhurried.stt import VOSK_MODEL_NAME  # noqa: E402
 from unhurried.vad import FRAME_MS  # noqa: E402
@@ -453,7 +453,14 @@ def vosk_waits_longer_table(points: list[SweepPoint], patients: list[PatientPoin
     return "\n".join(lines) if n else "None."
 
 
-def vosk_latency_ms(clips: list[Clip]) -> list[int]:
+@dataclass
+class Latency:
+    clip: Clip
+    ms: int
+    replaced: str | None  # the last word just before the final one took over, if it differed
+
+
+def vosk_latency_ms(clips: list[Clip]) -> list[Latency]:
     """Fluent clips only: time from the true end until the transcript ends with the clip's final
     last word and keeps ending with it (the start of that last stable run of frames).
     Negative means Vosk had the word before the energy fell below the VAD threshold."""
@@ -465,8 +472,24 @@ def vosk_latency_ms(clips: list[Clip]) -> list[int]:
         stable_from = len(c.transcripts)
         while stable_from > 0 and c.transcripts[stable_from - 1].endswith(last_word):
             stable_from -= 1
-        out.append((stable_from + 1) * FRAME_MS - c.true_end_ms)
+        before = c.transcripts[stable_from - 1].split() if stable_from > 0 else []
+        replaced = before[-1] if before and before[-1] != last_word else None
+        out.append(Latency(c, (stable_from + 1) * FRAME_MS - c.true_end_ms, replaced))
     return out
+
+
+def latency_text(lat: list[Latency]) -> str:
+    if not lat:
+        return "not measurable on these clips."
+    ms = [x.ms for x in lat]
+    text = f"median {statistics.median(ms):.0f} ms over {len(ms)} fluent clips (range {min(ms)} to {max(ms)} ms)."
+    worst = max(lat, key=lambda x: x.ms)
+    final = worst.clip.transcripts[-1].split()[-1]
+    if worst.replaced and HOMOPHONES.get(worst.replaced) == DIGIT_WORDS.get(final):
+        text += (f"\n  The {worst.ms} ms maximum is {Path(worst.clip.file).stem}: its last digit was already in the"
+                 f" transcript as \"{worst.replaced}\",\n  and Vosk's final text only rewrote it to \"{final}\"."
+                 " Homophones next to a digit count as digits,\n  so the rewrite no longer changes the Patient's decision.")
+    return text
 
 
 # Short factual caveats only. Interpretation goes in the hand-written eval/results/discussion.md.
@@ -481,16 +504,14 @@ def caveats(vosk_clips: list[Clip] | None = None) -> str:
         "  memory never fire on oracle transcripts. They are tested in `tests/test_patient.py`.",
     ]
     if vosk_clips is not None:
-        lat = vosk_latency_ms(vosk_clips)
-        lat_text = (f"median {statistics.median(lat):.0f} ms, range {min(lat)} to {max(lat)} ms, over {len(lat)} fluent clips"
-                    if lat else "not measurable on these clips")
+        lat_text = latency_text(vosk_latency_ms(vosk_clips))
         out += [
             f"- Vosk transcripts: `{VOSK_MODEL_NAME}`, offline, fed the same 32 ms frames as the VAD. The",
             "  transcript at each frame is every finished Vosk segment plus the current partial. Vosk's segment",
             "  ends are transcript chunks only and never end a Turn. A segment's final text can rewrite its",
             "  partial, so the transcript can change backwards; the Patient re-reads it on every frame.",
             "- With Vosk, every clip has words, P_* included, so no clip runs timing-only.",
-            f"- Vosk latency (true end until the transcript's final last word appears and stays): {lat_text}.",
+            f"- Vosk latency (true end until the transcript's final last word appears and stays): {lat_text}",
             "- With Vosk, any word transcribed twice in a row fires the repetition bonus (doubled digit words",
             "  are skipped), so the bonus can fire here even though the clips contain no real repetitions.",
         ]

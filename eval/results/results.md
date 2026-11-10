@@ -108,6 +108,9 @@ or at the end of the clip when the Patient never ended.
   ends are transcript chunks only and never end a Turn. A segment's final text can rewrite its
   partial, so the transcript can change backwards; the Patient re-reads it on every frame.
 - With Vosk, every clip has words, P_* included, so no clip runs timing-only.
-- Vosk latency (true end until the transcript's final last word appears and stays): median 181 ms, range -61 to 1147 ms, over 10 fluent clips.
+- Vosk latency (true end until the transcript's final last word appears and stays): median 181 ms over 10 fluent clips (range -61 to 1147 ms).
+  The 1147 ms maximum is A2: its last digit was already in the transcript as "for",
+  and Vosk's final text only rewrote it to "four". Homophones next to a digit count as digits,
+  so the rewrite no longer changes the Patient's decision.
 - With Vosk, any word transcribed twice in a row fires the repetition bonus (doubled digit words
   are skipped), so the bonus can fire here even though the clips contain no real repetitions.
