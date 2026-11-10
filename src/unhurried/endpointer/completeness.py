@@ -16,7 +16,7 @@ DANGLING = {
 }
 
 # Hesitation sounds: the caller is thinking, not finished.
-FILLERS = {"um", "uh", "er", "erm", "hmm"}
+FILLERS = {"um", "uh", "er", "erm", "hmm", "huh"}
 
 # Spoken digits. "oh" is zero when people read out numbers.
 DIGIT_WORDS = {
@@ -30,6 +30,10 @@ REPEATS = {"double": 2, "triple": 3}
 
 YES_WORDS = {"yes", "yeah", "yep", "yup", "correct", "right"}
 NO_WORDS = {"no", "nope", "nah"}
+
+# Any of these means the caller is saying no. Checked BEFORE yes words,
+# because "not right" contains "right".
+NEGATIONS = NO_WORDS | {"not", "wrong"}
 
 MONTHS = {"january", "february", "march", "april", "may", "june", "july",
           "august", "september", "october", "november", "december"}
@@ -59,24 +63,34 @@ def is_digit_homophone(words: list[str], i: int) -> bool:
     return is_digit_token(before) or is_digit_token(after)
 
 
-def count_digits(words: list[str]) -> int:
-    """Digits heard so far: spoken digit words, each numeral character ("4521" adds 4),
-    and "double"/"triple" before a single digit ("double eight" adds 2)."""
-    total = 0
+def digits_in(words: list[str]) -> str:
+    """The digits heard, in order: spoken digit words, numerals, "double"/"triple" repeats,
+    and homophones used as digits"""
+    out: list[str] = []
     for i, w in enumerate(words):
         if w in REPEATS:
             nxt = words[i + 1] if i + 1 < len(words) else ""
-            if nxt in DIGIT_WORDS or (len(nxt) == 1 and nxt.isdigit()):
-                # The next word counts once on its own, so add the extra copies here.
-                total += REPEATS[w] - 1
+            digit = DIGIT_WORDS.get(nxt) or (nxt if len(nxt) == 1 and nxt.isdigit() else "")
+            if digit:
+                # The next word adds itself once, so add the extra copies here.
+                out.append(digit * (REPEATS[w] - 1))
         elif w in DIGIT_WORDS:
-            total += 1
+            out.append(DIGIT_WORDS[w])
         elif w in HOMOPHONES:
             if is_digit_homophone(words, i):
-                total += 1
+                out.append(HOMOPHONES[w])
         else:
-            total += sum(1 for ch in w if ch.isdigit())
-    return total
+            out.append("".join(ch for ch in w if ch.isdigit()))
+    return "".join(out)
+
+
+def count_digits(words: list[str]) -> int:
+    return len(digits_in(words))
+
+
+def extract_digits(text: str) -> str:
+    # Public helper for the dialogue: all digits in a transcript, e.g. for the read-back
+    return digits_in(text.lower().split())
 
 
 def account_status(words: list[str]) -> tuple[Status, str]:
@@ -155,17 +169,26 @@ def completeness(transcript: str, slot: str) -> tuple[Status, str]:
     # Confirmation runs first: "no it's ..." is a correction, judged by its digits,
     # not by the general dangling-word check.
     if slot == "confirm":
-        if words[0] in NO_WORDS:
-            rest = words[1:]
-            # Digits after "no" mean a correction: judge it like an account number.
+        # Skip hesitation at the start ("huh yes", "um no it's ...").
+        while words and words[0] in FILLERS:
+            words = words[1:]
+        if not words:
+            return Status.UNSURE, "nothing heard"
+
+        # No before yes: "that's not right" contains "right" but means no.
+        neg_at = next((i for i, w in enumerate(words) if w in NEGATIONS), None)
+        if neg_at is not None:
+            rest = words[neg_at + 1:]
+            # Digits after the "no" mean a correction: judge it like an account number.
             if count_digits(rest) > 0:
                 status, reason = account_status(rest)
                 return status, f"correction: {reason}"
             # "no it's", "no um": a correction is on its way.
             if rest and (rest[-1] in DANGLING or rest[-1] in FILLERS or rest[-1].endswith("-")):
                 return Status.INCOMPLETE, f"correction coming: ends with '{rest[-1]}'"
-            # A plain "no", or "no that's not right": the answer itself is finished.
-            return Status.COMPLETE, f"heard '{words[0]}'"
+            # A plain "no" or "that's not right": the answer itself is finished.
+            return Status.COMPLETE, f"heard '{words[neg_at]}'"
+
         for w in words:
             if w in YES_WORDS:
                 return Status.COMPLETE, f"heard '{w}'"

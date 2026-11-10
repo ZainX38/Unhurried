@@ -36,6 +36,11 @@ CASES = [
     ("the fortieth of march", "date_of_birth", Status.INCOMPLETE, "missing year"),
     # ...but only the word right before the month ("birth" also ends in -th).
     ("my date of birth is march nineteen ninety nine", "date_of_birth", Status.INCOMPLETE, "missing day"),
+    ("huh yes", "confirm", Status.COMPLETE, "yes"),
+    ("huh no it's four five two one eight eight three one", "confirm", Status.COMPLETE, "correction"),
+    ("huh no that's not right", "confirm", Status.COMPLETE, "no"),
+    ("that's not right", "confirm", Status.COMPLETE, "not"),
+    ("huh", "confirm", Status.UNSURE, "nothing"),
 ]
 
 
@@ -51,3 +56,4 @@ def test_unknown_slot_raises(transcript: str) -> None:
     # A typo in a slot name must fail loudly, not quietly switch the rules off.
     with pytest.raises(ValueError, match="acount_number"):
         completeness(transcript, "acount_number")
+
