@@ -70,8 +70,9 @@ DEMO_CLIPS = [
     ("clips/fluent/A1.wav", "A1_fluent.wav"),
     ("clips/stammered/A1_v1.wav", "A1_stammered.wav"),
     ("clips/pauses/P_A2.wav", "P_A2.wav"),
-    # The rest of a sample Call: yes, date of birth, reason (R1 and R2 both map to billing).
+    # The rest of a sample Call: yes / no-and-correction, date of birth, reason (R1 and R2 both map to billing).
     ("clips/fluent/C1.wav", "C1.wav"),
+    ("clips/fluent/C2.wav", "C2.wav"),
     ("clips/fluent/D1.wav", "D1.wav"),
     ("clips/fluent/R1.wav", "R1.wav"),
     ("clips/fluent/R2.wav", "R2.wav"),

@@ -254,5 +254,5 @@ def test_real_recordings_build_the_full_set(tmp_path: Path) -> None:
             assert int(r["piece_ends_ms"].split(";")[-1]) == int(r["true_end_ms"]), r["file"]
             assert " ".join(r["piece_texts"].split("|")) == r["transcript"], r["file"]
     assert sorted(p.name for p in (tmp_path / "demo").iterdir()) == [
-        "A1_fluent.wav", "A1_stammered.wav", "C1.wav", "D1.wav", "P_A2.wav",
+        "A1_fluent.wav", "A1_stammered.wav", "C1.wav", "C2.wav", "D1.wav", "P_A2.wav",
         "R1.wav", "R2.wav", "manifest.csv"]
