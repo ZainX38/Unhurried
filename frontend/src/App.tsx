@@ -225,13 +225,16 @@ export default function App() {
             <p className="reason">{now.reason}</p>
           </>
         ) : (
-          <p className="reason">Start a call to see each decision and its reason.</p>
+          <>
+            <p className="action">Not in a call</p>
+            <p className="reason">Start a call to see each decision and its reason.</p>
+          </>
         )}
-        {stop && (
-          <p className="last-stop">
-            Last {stop.action === "END" ? "turn end" : "prompt"} at {secs(stop.t_ms)}: {stop.reason}
-          </p>
-        )}
+        <p className="last-stop">
+          {stop
+            ? <>Last {stop.action === "END" ? "turn end" : "prompt"} at {secs(stop.t_ms)}: {stop.reason}</>
+            : "No turn end or prompt yet."}
+        </p>
       </section>
 
       <section className="controls" aria-label="Call controls">
