@@ -1,7 +1,7 @@
 # AI Usage
 
 I built **Unhurried** with **Agent-Assisted Coding**: 
-- **Me**: I designed the system and built the core logic myself (the endpointers, the complenetess rules, the evaluation metrics)
+- **Me**: I designed the system and built the core logic myself (the endpointers, the completeness rules, the evaluation metrics)
 - **Claude Code**: it wrote most of the plumbing (audio processing, the evaluation harness, speech to text wiring, the server and the UI) from plans I agreed first. 
 
 I checked everything with tests, regression checks and by reading the code.
@@ -28,7 +28,7 @@ I do this at the start:
 1. `/setup-matt-pocock-skills` configures the repo with tickets in `/issues` folder, glossary in `docs/GLOSSARY.md` and decision in `docs/adr`
 2. `/grill-with-docs` is probably the most important step as it lets me and Claude Code to align our ideas. It interviews me about my plan one question at a time, and writes teh terms into the glossary and the decisions into ADRs. This made sure Claude and I were aligned about the plan before the code
 3. Test seams: I asked for narrow tests for the rules I write myself
-4. `to-spec` tuned the conversation into a spec and then `/to-ticket` split it into 10 tickets/ issues. These tickets are sized for one fresh Claude session, so Claude Code remains below the 40% context window for better answers.
+4. `to-spec` turned the conversation into a spec and then `/to-ticket` split it into 10 tickets/ issues. These tickets are sized for one fresh Claude session, so Claude Code remains below the 40% context window for better answers.
 
 #### Decisions
 
@@ -37,7 +37,7 @@ From the `grill-with-docs` some decisions were made:
 | Decision | Suggested by | Why |
 | --- | --- | --- |
 | Vosk for speech-to-text (ADR 0002) | Claude | At first, I wanted to use a Python library called `faster-whisper` but this wouldn't stream data to the backend, which Vosk does |
-| Endpointer as a pure state machine fed one VAD frame per call (ADR 0001) | Claude | I wanted the Endpointer to analyse the audios and from that figure out some data, but this would be slow. Claude suggested the Endpointer should never see raw audio and turn it into a pure state machine with no clock of its own, which means times arrive only through event timestamps. This is faster than real time and can process throusands of Turns |
+| Endpointer as a pure state machine fed one VAD frame per call (ADR 0001) | Claude | I wanted the Endpointer to analyse the audios and from that figure out some data, but this would be slow. Claude suggested the Endpointer should never see raw audio and turn it into a pure state machine with no clock of its own, which means time arrives only as each frame's 32 ms, so the endpointer has no clock and can replay thousands of Turns faster than real time. |
 | Call flow: account number → date of birth → reason, with read-back | Me | This will be the demo flow. It starts from easy (account number), which is predictable to something harder (reason), which is harder to predict, meaning the system must work accurately. This will help me properly test and demo my program |
 | At most one re-prompt, then fallback (keypad or simulated agent) | Me | During research, I read that adults who stammer, often fell on audio loops on calls. To prevent this, my system will ask for one reprompt and if it still doesn't understand keypad fallback and if it doesn't understand again then hand over to a person |
 | Barge-in: if the caller keeps talking, the system stops and treats it as the same turn | Me + Claude | It can happen the system misunderstand a timing and cuts off the user, so in case this happens, I suggested to Claude to make the system stop talking and start again. Claude also suggested to measure how often this happens and account it for the evaluation and cut-off rate stat. This will be the next step. |
@@ -92,7 +92,7 @@ This is how the workload looks like from all the 10 tickets:
 
 
 
-### 5. Agreeing with Plan
+### 5. Where I disagreed with AI
 
 I don't like to trust AI in all of their outputs, and it was the same in this project. There were times I disagreed with Claude:
 - No LLM endpointer as it adds latency

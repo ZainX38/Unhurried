@@ -19,6 +19,8 @@ On my test set with my own voice, (with stammers inserted at known points) and u
 | Baseline, 3 s timeout | 0% (0/30) | 3014 ms | 3026 ms | 0% (0/4) |
 | **Unhurried** | **23% (7/30)** | **707 ms** | **722 ms** | **0% (0/4)** |
 
+Targets were a fluent median wait ≤ 900 ms (met) and stammered cut-offs < 5% (missed: 23%). The misses are free text reasons, where the rules can’t tell whether the answer is finished, and a stammered “yes” that Vosk heard as “yeah”. One fluent caller in ten was gently prompted after Vosk misheard a digit
+
 A fixed timeout can only stop cutting people off by making **everyone** wait longer (3s here). Unhurried waits longer only when the words show the answer isn't finished. For example, when someone says "my account number is...", or the user only says 4 out of 8 digits. This makes fluent callers wait no longer than with the 0.7s baseline.
 
 ![Patient endpointer vs the fixed-threshold curve](eval/results/sweep.png)
@@ -50,13 +52,15 @@ uv run python -m eval.download_model                  # once: the offline Vosk m
 
 ```shell
 uv run uvicorn unhurried.server:app --port 8000       # terminal 1: backend
-cd frontend && npm install && npm run dev             # terminal 2: frontend
+cd frontend                                           # terminal 2: frontend
+npm install
+npm run dev             
 ```
 
 - Open http://localhost:5173. The Vite dev server proxies `/ws` to the backend on port 8000
 - Click "Call Northwind Energy", choose Sample caller
 - Try Baseline (previous model, which cuts off people who stammer)
-- Try Unhurried, which understands behaviour and gives people who stammer time
+- Try Unhurried, which waits when the answer isn't finished and gives people who stammer time
 
 ## Tests and Rebuild the data and re-run the evaluation
 
@@ -77,13 +81,13 @@ Results are written to `eval/results/` (`results.md`, `sweep.png`, per-clip CSVs
 - **Play sample caller** streams recorded answers from `eval/data/demo/` through the same WebSocket as a microphone, so the demo works without anyone speaking. The script is: account number with a stammer, "No, it's 4 5 2 1 8 8 3 1" (correcting the read-back), yes, date of birth, yes, reason for calling.
   - It behaves like a caller who gets cut off. If the bot replies before the caller has finished speaking (the clip's `true_end_ms` in `eval/data/demo/manifest.csv`), the clip stops and the same answer is given again at the next question. A reply after that point is normal, and the next answer follows.
   - Between answers it waits for the bot to finish speaking, then sends silence until the bot replies (at most 7 s). It stops when the call ends or the script runs out.
-  - The same caller runs from the command line: `uv run python scripts/stream_call.py --caller --endpointer baseline eval/data/demo/{A1_stammered,C2,C1,D1,C1,R2}.wav`
+  - The same caller runs from the command line: `uv run python scripts/stream_call.py --caller --endpointer baseline eval/data/demo/A1_stammered.wav eval/data/demo/C2.wav eval/data/demo/C1.wav eval/data/demo/D1.wav eval/data/demo/C1.wav eval/data/demo/R2.wav`
 - **My microphone** captures 16 kHz mono PCM16 in the browser (an AudioWorklet resamples it) and mutes outgoing audio while the bot speaks. Use headphones so Vosk understands better.
 - **Keypad** is always available as an alternative to speaking, which solves the looping issue people who stammer were facing.
 
 ## Known Limitations
 
-- I wasn't able to find anyone who stammered, so a stammering effect was added to the clips rather than recorded from pepole who stammer
+- I wasn't able to find anyone who stammered, so blocks (a short burst and then a 1-3s silence) were added to my own fluent recordings rather than recorded from pepole who stammer
 - Vosk's small model is weak on free text, e.g. it confused one time "calling about" with "pulling a boat"
 - The rules were written with these clips in mind
 
