@@ -7,10 +7,13 @@ There is no socket, clock or audio device here, so a whole Call can be tested by
 feeding arrays (seam 1). The server only moves bytes and JSON in and out of this.
 Events are plain dicts, ready for json.dumps:
 
-    {"type": "transcript", "text": ...}                     only when the text changes
+    {"type": "transcript", "text": raw, "clean": ...}       only when the text changes
     {"type": "decision", "action": ..., "reason": ..., "t_ms": ...}   every frame
     {"type": "bot", "line": ...}
     {"type": "state", "state": ..., "expected_slot": ..., "slots": {...}}
+
+Cleanup is for display and Slots only: the Endpointer reads the raw text, because
+repetitions are evidence of stammering.
 
 No barge-in: frames keep being processed while the bot "speaks".
 """
@@ -21,6 +24,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from unhurried.cleanup import clean
 from unhurried.endpointer.types import Action, Endpointer
 from unhurried.stt import STT
 from unhurried.vad import FRAME_MS, FRAME_SAMPLES, is_speech
@@ -86,7 +90,7 @@ class Session:
         events: list[Event] = []
         if text != self._last_text:
             self._last_text = text
-            events.append({"type": "transcript", "text": text})
+            events.append({"type": "transcript", "text": text, "clean": clean(text)})
 
         decision = self.endpointer.step(speech, FRAME_MS, text)
         events.append({"type": "decision", "action": decision.action.value,
@@ -95,7 +99,7 @@ class Session:
         if decision.action is Action.PROMPT:
             events.append({"type": "bot", "line": TAKE_YOUR_TIME})
         elif decision.action is Action.END:
-            events += self._apply(self.dialogue.on_turn(text))
+            events += self._apply(self.dialogue.on_turn(clean(text)))
         return events
 
     def _apply(self, reply: Reply) -> list[Event]:

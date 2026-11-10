@@ -72,7 +72,12 @@ BYE = Reply("Thanks, goodbye.", "", "DONE")
 class SpyEndpointer(Baseline):
     def __init__(self) -> None:
         self.slots: list[str] = []
+        self.texts: list[str | None] = []
         super().__init__()
+
+    def step(self, is_speech, frame_ms, transcript):
+        self.texts.append(transcript)
+        return super().step(is_speech, frame_ms, transcript)
 
     def reset(self, expected_slot: str = "") -> None:
         self.slots.append(expected_slot)
@@ -149,3 +154,18 @@ def test_a_whole_call_reaches_done_and_then_ignores_frames() -> None:
     assert session.done
     assert session.feed(turn) == []
     assert session.keypad("1") == []
+
+
+def test_cleanup_is_for_display_and_slots_but_the_endpointer_reads_raw_text() -> None:
+    raw = "um my my account is four four five"
+    endpointer, stt = SpyEndpointer(), FakeSTT(["", raw])
+    dialogue = StubDialogue([GREETING, READ_BACK])
+    session = Session(endpointer, stt, dialogue)
+    session.start()
+
+    events = session.feed(np.concatenate([frames(LOUD, 1600), frames(QUIET, 1000)]))
+
+    assert of(events, "transcript")[0] == {
+        "type": "transcript", "text": raw, "clean": "my account is four four five"}
+    assert raw in endpointer.texts                       # stammer evidence kept
+    assert dialogue.turns == ["my account is four four five"]   # Slots get the clean text
