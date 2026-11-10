@@ -70,6 +70,11 @@ DEMO_CLIPS = [
     ("clips/fluent/A1.wav", "A1_fluent.wav"),
     ("clips/stammered/A1_v1.wav", "A1_stammered.wav"),
     ("clips/pauses/P_A2.wav", "P_A2.wav"),
+    # The rest of a sample Call: yes, date of birth, reason (R1 and R2 both map to billing).
+    ("clips/fluent/C1.wav", "C1.wav"),
+    ("clips/fluent/D1.wav", "D1.wav"),
+    ("clips/fluent/R1.wav", "R1.wav"),
+    ("clips/fluent/R2.wav", "R2.wav"),
 ]
 
 
@@ -358,12 +363,14 @@ def write_manifest(path: Path, rows: list[dict]) -> None:
 
 
 def write_demo(data_dir: Path, rows: list[dict]) -> None:
-    """Copy the 3 committed demo samples into data/demo/ with their own small manifest."""
+    """Copy the committed demo samples into data/demo/ with their own small manifest."""
     demo_dir = data_dir / "demo"
     demo_dir.mkdir(parents=True, exist_ok=True)
     by_file = {r["file"]: r for r in rows}
     demo_rows = []
     for src, name in DEMO_CLIPS:
+        if src not in by_file:   # a partial set of recordings (tests) doesn't build every demo source
+            continue
         shutil.copyfile(data_dir / src, demo_dir / name)
         demo_rows.append({**by_file[src], "file": f"demo/{name}"})
     write_manifest(demo_dir / "manifest.csv", demo_rows)
