@@ -439,3 +439,7 @@ Vosk check (3 clips): digits come out as words, with 0 as “zero”. Homophones
 
 - Measured STT delay: **median 181 ms**, close to my guessed 300 ms oracle delay.
 - The 1147 ms maximum was A2's final rewriting "for" → "four", which no longer affects the Patient's decision. Caveat updated in results.md.
+
+### Ticket 7
+
+Ticket 7: dialogue state machine (me), session/server/stream script (Claude). Full call works end to end with Vosk. Known limit: ‘bill’ → ‘bell’ gives intent ‘other’ → handed to a person (safe fallback)
