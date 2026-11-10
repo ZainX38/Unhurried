@@ -1,0 +1,99 @@
+:root {
+  --bg: #ffffff;
+  --fg: #111111;
+  --muted: #3d3d3d;
+  --line: #111111;
+  --panel: #f2f2f2;
+  --accent: #0b4fd1; /* 7:1 on white */
+  --accent-fg: #ffffff;
+  --listen: #0a5c2b;
+  --end: #8a1c00;
+  --prompt: #5b3b00;
+  --focus: #ffbf47;
+  font-size: 20px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.45;
+  color: var(--fg);
+  background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d0d0d;
+    --fg: #f5f5f5;
+    --muted: #cfcfcf;
+    --line: #f5f5f5;
+    --panel: #1c1c1c;
+    --accent: #8db4ff;
+    --accent-fg: #0d0d0d;
+    --listen: #7ee2a0;
+    --end: #ff9e85;
+    --prompt: #ffd27a;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 2rem; margin: 0; }
+h2 { font-size: 1.1rem; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+.tagline { margin: 4px 0 20px; color: var(--muted); }
+
+:focus-visible { outline: 4px solid var(--focus); outline-offset: 2px; }
+
+fieldset { border: 0; padding: 0; margin: 0; }
+legend { font-weight: 700; margin-bottom: 8px; }
+
+/* The toggle: the most prominent control */
+.mode { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.mode legend { grid-column: 1 / -1; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.mode label {
+  display: flex; flex-direction: column; gap: 4px; padding: 16px 20px;
+  border: 3px solid var(--line); border-radius: 12px; cursor: pointer;
+}
+.mode label.chosen { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.mode input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.mode label:has(input:focus-visible) { outline: 4px solid var(--focus); outline-offset: 2px; }
+.mode-name { font-size: 1.8rem; font-weight: 800; }
+.mode-hint { font-size: 0.95rem; }
+
+/* The reason panel: the other most prominent thing */
+.why { border: 3px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; background: var(--panel); }
+.action { font-size: 2.2rem; font-weight: 800; margin: 0; }
+.action-continue { color: var(--listen); }
+.action-end { color: var(--end); }
+.action-prompt { color: var(--prompt); }
+.muted-note { font-size: 1rem; font-weight: 600; color: var(--muted); }
+.reason { font-size: 1.4rem; font-family: ui-monospace, Consolas, monospace; margin: 8px 0 0; overflow-wrap: anywhere; }
+.last-stop { margin: 12px 0 0; font-size: 1rem; color: var(--muted); overflow-wrap: anywhere; }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-bottom: 24px; }
+.source label { display: block; }
+.source input { width: 1.1em; height: 1.1em; margin-right: 8px; }
+button {
+  font: inherit; color: var(--fg); background: var(--bg);
+  border: 2px solid var(--line); border-radius: 10px; padding: 10px 14px; cursor: pointer;
+}
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.big { font-size: 1.3rem; font-weight: 700; padding: 16px 28px; }
+button.call { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.status { flex-basis: 100%; margin: 0; color: var(--muted); }
+
+.columns { display: grid; grid-template-columns: 1fr 1fr auto; gap: 24px; align-items: start; }
+@media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
+.transcript { font-size: 1.3rem; margin: 0; min-height: 2.9em; overflow-wrap: anywhere; }
+.slot { margin: 8px 0 0; font-weight: 600; }
+.slots { margin: 12px 0 0; }
+.slots div { display: flex; gap: 8px; }
+.slots dt { font-weight: 700; text-transform: capitalize; }
+.slots dd { margin: 0; overflow-wrap: anywhere; }
+.bot-lines { margin: 0; padding-left: 1.2em; }
+.bot-lines li { margin-bottom: 6px; }
+
+.keypad .hint { margin: 0 0 8px; font-size: 0.9rem; color: var(--muted); }
+.typed {
+  display: block; font-size: 1.6rem; font-family: ui-monospace, Consolas, monospace;
+  border: 2px solid var(--line); border-radius: 8px; padding: 4px 10px; margin-bottom: 8px; letter-spacing: 0.1em;
+}
+.keys { display: grid; grid-template-columns: repeat(3, 4.2rem); gap: 8px; }
+.keys button { font-size: 1.4rem; font-weight: 700; padding: 12px 0; }
+.keys button.send { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-size: 1rem; }

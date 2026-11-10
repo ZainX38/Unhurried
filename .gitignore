@@ -226,3 +226,7 @@ eval/data/manifest.csv
 
 # Vosk model (download with eval/download_model.py)
 models/
+
+# Frontend (ticket 08)
+frontend/node_modules/
+frontend/dist/
