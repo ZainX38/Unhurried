@@ -38,6 +38,9 @@ CLOSING = {
     "power cut": "Thanks, I'll put you through to our power cut team.",
 }
 
+HAND_OVER = "Let me put you through to someone who can help."
+OFFER_KEYPAD_CONFIRM = "You can also press 1 for yes or 2 for no."
+
 def find_intent(text: str) -> str | None:
     # First intent whose keyword appears as a whole word or phrase in the text
     padded = f" {' '.join(text.lower().split())} "   # Spaces at both ends, means whole words only
@@ -73,12 +76,20 @@ class Dialogue:
         return Reply(f"{GREETING} {ASK_ACCOUNT}", "account_number", self.state)
 
     def _failed(self, reprompt: str, fallback: str, slot: str) -> Reply:
-        # A failed answer: re-prompt once, then offer the fallback
-        #Stays in the same state
+        # A failed answer: re prompt once, then offer the fallback, then hand over
+        # The caller is never stuck in a loop
         self.retries += 1
-        line = reprompt if self.retries == 1 else fallback
 
-        return Reply(line, slot, self.state)
+        if self.retries == 1:
+            return Reply(reprompt, slot, self.state)
+        
+        if self.retries == 2:
+            return Reply(fallback, slot, self.state)
+        
+        self.slots["intent"] = "other"
+        self.state = State.DONE
+
+        return Reply(HAND_OVER, "", self.state)
 
     def _read_back_account(self) -> Reply:
         # Read the pending number back and ask the caller to confirm it
@@ -148,12 +159,11 @@ class Dialogue:
 
             # Neither yes nor no: reprompt, saying what we need and what we're confirming
             # Keep the pending number because the caller didn't say no
-            self.retries += 1
             readback = ", ".join(self.pending)
-            return Reply(
+            
+            return self._failed(
                 f"Just to check, is your account number {readback}? Please say yes or no.",
-                "confirm",
-                self.state,
+                OFFER_KEYPAD_CONFIRM, "confirm",
             )
 
         if self.state is State.DOB:
@@ -195,11 +205,11 @@ class Dialogue:
 
                 return Reply(ASK_DOB, "date_of_birth", self.state)
 
-            # Neither yes nor no: reprompt with what we're confirming
-            self.retries += 1
-
-            return Reply(f"Just to check, is your date of birth {self.pending}? Please say yes or no.",
-                         "confirm", self.state)
+            # Neither yes nor no: re prompt with what we're confirming
+            return self._failed(
+                f"Just to check, is your date of birth {self.pending}? Please say yes or no.",
+                OFFER_KEYPAD_CONFIRM, "confirm",
+            )
                 
         if self.state is State.REASON:
             intent = find_intent(text)
@@ -219,9 +229,13 @@ class Dialogue:
         raise NotImplementedError(f"no handling for {self.state.name} yet")
     
     def on_keypad(self, digits: str) -> Reply:
-        # Typed digits take the same path as speech in every state, so the same checks, read-backs and retries apply.
-        # The call is over at DONE
+        # Typed digits take the same path as speech in every state
+        # At a read-back, 1 means yes and 2 means no
+        # Call is over at DONE
         if self.state is State.DONE:
             raise RuntimeError("call is over")
         
+        if self.state in (State.CONFIRM_ACCOUNT, State.CONFIRM_DOB):
+            digits = {"1": "yes", "2": "no"}.get(digits, digits)
+
         return self.on_turn(digits)

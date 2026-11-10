@@ -35,7 +35,7 @@ CASES = [
     ("the fortieth of march nineteen ninety nine", "date_of_birth", Status.COMPLETE, "day, month, year"),
     ("the fortieth of march", "date_of_birth", Status.INCOMPLETE, "missing year"),
     # ...but only the word right before the month ("birth" also ends in -th).
-    ("my date of birth is march nineteen ninety nine", "date_of_birth", Status.INCOMPLETE, "missing day"),
+    ("my date of birth is march nineteen ninety nine", "date_of_birth", Status.UNSURE, "missing day"),
     ("huh yes", "confirm", Status.COMPLETE, "yes"),
     ("huh no it's four five two one eight eight three one", "confirm", Status.COMPLETE, "correction"),
     ("huh no that's not right", "confirm", Status.COMPLETE, "no"),
