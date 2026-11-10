@@ -13,7 +13,8 @@ type Source = "sample" | "mic";
 interface View {
   inCall: boolean;
   status: string;
-  transcript: string;
+  transcript: string; // raw: what the endpointer reads
+  clean: string; // cleaned: what the caller meant
   now: Decision | null; // the latest decision (one per 32 ms frame)
   lastStop: Decision | null; // the latest END or PROMPT, which only lasts one frame in `now`
   botLines: string[];
@@ -24,7 +25,7 @@ interface View {
 }
 
 const EMPTY: View = {
-  inCall: false, status: "", transcript: "", now: null, lastStop: null,
+  inCall: false, status: "", transcript: "", clean: "", now: null, lastStop: null,
   botLines: [], state: "", expectedSlot: "", slots: {}, turnLabel: null,
 };
 
@@ -44,11 +45,11 @@ function reduce(v: View, m: Msg): View {
       return { ...v, turnLabel: m.label };
     case "event": {
       const e = m.e;
-      if (e.type === "transcript") return { ...v, transcript: e.text };
+      if (e.type === "transcript") return { ...v, transcript: e.text, clean: e.clean };
       if (e.type === "bot") return { ...v, botLines: [...v.botLines, e.line] };
       if (e.type === "state")
         return {
-          ...v, state: e.state, expectedSlot: e.expected_slot, slots: e.slots, transcript: "",
+          ...v, state: e.state, expectedSlot: e.expected_slot, slots: e.slots, transcript: "", clean: "",
           status: e.state === "DONE" ? "Call finished." : v.status,
         };
       const d: Decision = { action: e.action, reason: e.reason, t_ms: e.t_ms };
@@ -279,7 +280,16 @@ export default function App() {
       <div className="columns">
         <section aria-labelledby="heard-h">
           <h2 id="heard-h">Heard</h2>
-          <p className="transcript">{view.transcript || "…"}</p>
+          <dl className="heard">
+            <div>
+              <dt>Raw</dt>
+              <dd className="transcript raw">{view.transcript || "…"}</dd>
+            </div>
+            <div>
+              <dt>Clean</dt>
+              <dd className="transcript">{view.clean || "…"}</dd>
+            </div>
+          </dl>
           {view.expectedSlot && <p className="slot">Waiting for {SLOT_LABEL[view.expectedSlot] ?? view.expectedSlot}.</p>}
           {Object.keys(view.slots).length > 0 && (
             <dl className="slots">

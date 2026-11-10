@@ -81,6 +81,11 @@ button.call { background: var(--accent); color: var(--accent-fg); border-color: 
 .columns { display: grid; grid-template-columns: 1fr 1fr auto; gap: 24px; align-items: start; }
 @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
 .transcript { font-size: 1.3rem; margin: 0; min-height: 2.9em; overflow-wrap: anywhere; }
+.heard { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0; }
+@media (max-width: 500px) { .heard { grid-template-columns: 1fr; } }
+.heard dt { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+.heard dd { margin: 0; }
+.transcript.raw { color: var(--muted); }
 .slot { margin: 8px 0 0; font-weight: 600; }
 .slots { margin: 12px 0 0; }
 .slots div { display: flex; gap: 8px; }

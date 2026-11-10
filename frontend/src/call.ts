@@ -12,7 +12,7 @@ export interface Decision {
 
 // The four event shapes documented in src/unhurried/session.py.
 export type ServerEvent =
-  | { type: "transcript"; text: string }
+  | { type: "transcript"; text: string; clean: string }
   | ({ type: "decision" } & Decision)
   | { type: "bot"; line: string }
   | { type: "state"; state: string; expected_slot: string; slots: Record<string, string> };
