@@ -20,6 +20,33 @@ ASK_DOB = "Thanks. And what's your date of birth?"
 ASK_ACCOUNT_AGAIN = "No rush. Could you tell me your 8-digit account number again?"
 OFFER_KEYPAD_ACCOUNT = "You can also type your account number on the keypad."
 ASK_DOB_CONFIRM = "I heard {}. Is that right?"
+ASK_REASON = "And what are you calling about today?"
+
+# Keywords for each reason for calling. Matched as whole words or phrases in the
+# transcript; the first intent with a match wins.
+INTENTS: dict[str, set[str]] = {
+    "billing": {"bill", "billing", "payment", "pay", "charge", "charged", "direct debit", "refund"},
+    "moving home": {"moving home", "moving house", "moving out", "move", "moving"},
+    "meter reading": {"meter reading", "meter", "reading"},
+    "power cut": {"power cut", "no power", "outage", "electricity's off"},
+}
+
+CLOSING = {
+    "billing": "Thanks, I'll put you through to our billing team.",
+    "moving home": "Thanks, I'll put you through to our home moves team.",
+    "meter reading": "Thanks, I'll put you through to our meter readings team.",
+    "power cut": "Thanks, I'll put you through to our power cut team.",
+}
+
+def find_intent(text: str) -> str | None:
+    # First intent whose keyword appears as a whole word or phrase in the text
+    padded = f" {' '.join(text.lower().split())} "   # Spaces at both ends, means whole words only
+
+    for intent, keywords in INTENTS.items():
+        if any(f" {k} " in padded for k in keywords):
+            return intent
+        
+    return None
 
 
 @dataclass(frozen=True)
@@ -50,6 +77,7 @@ class Dialogue:
         #Stays in the same state
         self.retries += 1
         line = reprompt if self.retries == 1 else fallback
+
         return Reply(line, slot, self.state)
 
     def _read_back_account(self) -> Reply:
@@ -58,7 +86,20 @@ class Dialogue:
         self.retries = 0
 
         readback = ", ".join(self.pending)          # "45218830" -> "4, 5, 2, 1, 8, 8, 3, 0"
+
         return Reply(f"I heard {readback}. Is that right?", "confirm", self.state)
+
+    def _answer(self, text: str) -> str | None:
+        # 'yes', 'no' or None. 'No' wins: "no that's not right" contains "right" 
+        words = [w.strip(",.") for w in text.lower().split()]
+
+        if any(w in NEGATIONS for w in words):
+            return "no"
+        
+        if any(w in YES_WORDS for w in words):
+            return "yes"
+        
+        return None
 
     def on_turn(self, text: str) -> Reply:
         # The caller finished speaking
@@ -116,22 +157,71 @@ class Dialogue:
             )
 
         if self.state is State.DOB:
-            # Read back the caller's own words, not a parsed date: if the speech
-            # recogniser misheard ("fortieth" for "fourteenth"), the caller can catch it.
+            # Read back the caller's own words, not a parsed date
+            # If the speech recogniser misheard ("fortieth" for "fourteenth"), the caller can catch it
             words = text.lower().split()
-            while words and words[0] in FILLERS:     # drop leading "um", "huh"
+
+            while words and words[0] in FILLERS:     # Drop leading "um", "huh"
                 words.pop(0)
+
+            if not words:
+                # Only fillers: nothing to read back yet
+                return self._failed("No rush. What's your date of birth?",
+                                    "Take your time. Just say the day, month and year.",
+                                    "date_of_birth")
+            
             self.pending = " ".join(words)
             self.state = State.CONFIRM_DOB
             self.retries = 0
+
             return Reply(ASK_DOB_CONFIRM.format(self.pending), "confirm", self.state)
+
+        if self.state is State.CONFIRM_DOB:
+            answer = self._answer(text)
+
+            if answer == "yes":
+                self.slots["date_of_birth"] = self.pending
+                self.pending = ""
+                self.retries = 0
+                self.state = State.REASON
+
+                return Reply(ASK_REASON, "reason", self.state)
+            
+            if answer == "no":
+                # The date was wrong: ask for it again
+                self.pending = ""
+                self.retries = 0
+                self.state = State.DOB
+
+                return Reply(ASK_DOB, "date_of_birth", self.state)
+
+            # Neither yes nor no: reprompt with what we're confirming
+            self.retries += 1
+
+            return Reply(f"Just to check, is your date of birth {self.pending}? Please say yes or no.",
+                         "confirm", self.state)
+                
+        if self.state is State.REASON:
+            intent = find_intent(text)
+
+            if intent is not None:
+                self.slots["intent"] = intent
+                self.state = State.DONE
+
+                return Reply(CLOSING[intent], "", self.state)
+
+            # No keyword matched: hand over to a person instead of guessing
+            self.slots["intent"] = "other"
+            self.state = State.DONE
+
+            return Reply("Thanks, I'll put you through to someone who can help.", "", self.state)
 
         raise NotImplementedError(f"no handling for {self.state.name} yet")
     
     def on_keypad(self, digits: str) -> Reply:
-        # Typed digits at the account question take the same path as speech
-        # The same 8-digit check, the same read-back and the same retries
-        if self.state is State.ACCOUNT:
-            return self.on_turn(digits)
-
-        raise NotImplementedError(f"no keypad handling for {self.state.name} yet")
+        # Typed digits take the same path as speech in every state, so the same checks, read-backs and retries apply.
+        # The call is over at DONE
+        if self.state is State.DONE:
+            raise RuntimeError("call is over")
+        
+        return self.on_turn(digits)

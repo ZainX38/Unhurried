@@ -150,3 +150,35 @@ def test_yes_to_the_date_read_back_saves_it_and_asks_the_reason() -> None:
     assert reply.expected_slot == "reason"
     assert reply.state is State.REASON
     assert dialogue.slots["date_of_birth"] == "their fortieth of march nineteen ninety nine"
+
+
+def at_reason() -> Dialogue:
+    dialogue = at_dob()
+    dialogue.on_turn("the fourteenth of march nineteen ninety nine")
+    dialogue.on_turn("yes")
+    return dialogue
+
+
+def test_a_reason_about_a_bill_is_billing_and_ends_the_call() -> None:
+    dialogue = at_reason()
+
+    reply = dialogue.on_turn("i'm calling about my bill")
+
+    assert dialogue.slots["intent"] == "billing"
+    assert reply.expected_slot == ""
+    assert reply.state is State.DONE
+    assert dialogue.state is State.DONE
+
+
+def test_a_correct_answer_resets_retries_so_the_next_question_gets_its_own_re_prompt() -> None:
+    dialogue = Dialogue()
+    dialogue.start()
+    dialogue.on_turn("four five two")                              # account: re-prompt used
+    dialogue.on_turn("four five two one eight eight three zero")   # account: correct
+    dialogue.on_turn("yes")
+
+    reply = dialogue.on_turn("um")                                 # first failure at DOB
+
+    assert "keypad" not in reply.line.lower()
+    assert "date of birth" in reply.line.lower()                   # a re-prompt, not the fallback
+    assert reply.state is State.DOB
