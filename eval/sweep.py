@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from eval import metrics  # noqa: E402
 from eval.run import (  # noqa: E402
     DEFAULT_MANIFEST, GROUPS, ORACLE_DELAY_MS, RECORD_COLUMNS, RESULTS_DIR,
-    Clip, baseline_factory, fmt_ms, fmt_rate, group_table, load_clips, make_stt, patient_factory, run,
+    Clip, baseline_factory, fmt_ms, fmt_rate, load_clips, make_stt, patient_factory, run,
     stt_style, write_csv,
 )
 from unhurried.endpointer.completeness import completeness  # noqa: E402
@@ -87,6 +87,7 @@ class PatientPoint:
     records: list[dict]
     stats: dict  # group -> metrics.GroupStats
     stt: str = "oracle"  # transcript source: "oracle" or "vosk"
+    prompted: frozenset[str] = frozenset()  # files where the Patient said PROMPT before any END
 
 
 def patient_points(clips: list[Clip], complete_values: list[int] = PATIENT_COMPLETE_MS,
@@ -96,7 +97,8 @@ def patient_points(clips: list[Clip], complete_values: list[int] = PATIENT_COMPL
     points = []
     for c in complete_values:
         records = run(clips, patient_factory(c))
-        points.append(PatientPoint(c, records, metrics.summarize(records), stt))
+        prompted = frozenset(clip.file for clip in clips if first_prompt_ms(clip, c) is not None)
+        points.append(PatientPoint(c, records, metrics.summarize(records), stt, prompted))
     return points
 
 
@@ -339,18 +341,40 @@ def comparison_table(points: list[SweepPoint], patients: list[PatientPoint]) -> 
 
     lines = [
         f"| endpointer | stammered cut-off (target < {TARGET_STAMMERED_CUT_OFF:.0%}) "
-        f"| fluent median wait (ms, target ≤ {TARGET_FLUENT_WAIT_MS}) | fluent p95 wait (ms) "
+        f"| fluent median wait (ms, target ≤ {TARGET_FLUENT_WAIT_MS}) | fluent p95 wait (ms) | fluent no END "
         f"| fluent cut-off | pauses cut-off | both targets met |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | :---: |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |",
     ]
     for name, stats in rows:
         fluent = stats.get("fluent")
         met = meets_targets(SweepPoint(0, [], stats))
         lines.append(
             f"| {name} | {fmt_rate(stats.get('stammered'))} | {fmt_ms(fluent.wait_median if fluent else None)} "
-            f"| {fmt_ms(fluent.wait_p95 if fluent else None)} | {fmt_rate(fluent)} | {fmt_rate(stats.get('pauses'))} "
-            f"| {'✅' if met else '❌'} |"
+            f"| {fmt_ms(fluent.wait_p95 if fluent else None)} | {fmt_frac(fluent.no_ends if fluent else None, fluent)} "
+            f"| {fmt_rate(fluent)} | {fmt_rate(stats.get('pauses'))} | {'✅' if met else '❌'} |"
         )
+    return "\n".join(lines)
+
+
+def fmt_frac(k: int | None, stats) -> str:
+    """'1/10' (k of the group's clips), or '-' for an empty group."""
+    return "-" if k is None or stats is None or stats.n == 0 else f"{k}/{stats.n}"
+
+
+def patient_group_table(pp: PatientPoint) -> str:
+    """Like run.group_table, but no-END and PROMPT counts are k/n: no-END clips are left out of
+    the wait stats, so the table must show what they cost."""
+    lines = [
+        "| group | clips | cut-off rate | no END | prompted | wait median (ms) | wait p95 (ms) |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for g in GROUPS:
+        s = pp.stats.get(g)
+        if s is None:
+            continue
+        prompted = sum(1 for r in pp.records if r["group"] == g and r["file"] in pp.prompted)
+        lines.append(f"| {g} | {s.n} | {fmt_rate(s)} | {fmt_frac(s.no_ends, s)} | {fmt_frac(prompted, s)} "
+                     f"| {fmt_ms(s.wait_median)} | {fmt_ms(s.wait_p95)} |")
     return "\n".join(lines)
 
 
@@ -499,7 +523,7 @@ def results_md(points: list[SweepPoint], patients: list[PatientPoint], vosk_clip
         "",
     ]
     for pp in patients:
-        out += [f"### {patient_label(pp, mixed)}", "", group_table(pp.stats), ""]
+        out += [f"### {patient_label(pp, mixed)}", "", patient_group_table(pp), ""]
     out += ["## Every Patient miss", "", misses_table(patients), ""]
     if vosk_clips is not None:
         out += [

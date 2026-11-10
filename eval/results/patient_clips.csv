@@ -91,10 +91,10 @@ complete_ms,stt,file,group,line,slot,true_end_ms,end_ms,outcome,wait_ms,reason
 700,vosk,clips/stammered/A1_v1.wav,stammered,A1,account_number,10743,11456,ended,713,"silence 704ms >= patience 700ms: unsure: 9 digits, expected 8"
 700,vosk,clips/stammered/A1_v2.wav,stammered,A1,account_number,10121,10816,ended,695,silence 704ms >= patience 700ms: complete: 8/8 digits
 700,vosk,clips/stammered/A1_v3.wav,stammered,A1,account_number,10554,11264,ended,710,silence 704ms >= patience 700ms: complete: 8/8 digits
-700,vosk,clips/fluent/A2.wav,fluent,A2,account_number,5029,6176,ended,1147,silence 1152ms >= patience 700ms: complete: 8/8 digits
-700,vosk,clips/stammered/A2_v1.wav,stammered,A2,account_number,7746,8800,ended,1054,silence 1056ms >= patience 700ms: complete: 8/8 digits
-700,vosk,clips/stammered/A2_v2.wav,stammered,A2,account_number,7283,8320,ended,1037,silence 1024ms >= patience 700ms: complete: 8/8 digits
-700,vosk,clips/stammered/A2_v3.wav,stammered,A2,account_number,7689,8800,ended,1111,silence 1120ms >= patience 700ms: complete: 8/8 digits
+700,vosk,clips/fluent/A2.wav,fluent,A2,account_number,5029,5728,ended,699,silence 704ms >= patience 700ms: complete: 8/8 digits
+700,vosk,clips/stammered/A2_v1.wav,stammered,A2,account_number,7746,8448,ended,702,silence 704ms >= patience 700ms: complete: 8/8 digits
+700,vosk,clips/stammered/A2_v2.wav,stammered,A2,account_number,7283,8000,ended,717,silence 704ms >= patience 700ms: complete: 8/8 digits
+700,vosk,clips/stammered/A2_v3.wav,stammered,A2,account_number,7689,8384,ended,695,silence 704ms >= patience 700ms: complete: 8/8 digits
 700,vosk,clips/fluent/A3.wav,fluent,A3,account_number,7192,,no_end,,
 700,vosk,clips/stammered/A3_v1.wav,stammered,A3,account_number,8287,,no_end,,
 700,vosk,clips/stammered/A3_v2.wav,stammered,A3,account_number,8495,,no_end,,
@@ -106,7 +106,7 @@ complete_ms,stt,file,group,line,slot,true_end_ms,end_ms,outcome,wait_ms,reason
 700,vosk,clips/fluent/D1.wav,fluent,D1,date_of_birth,5994,6688,ended,694,"silence 704ms >= patience 700ms: complete: day, month, year"
 700,vosk,clips/stammered/D1_v1.wav,stammered,D1,date_of_birth,7798,8512,ended,714,"silence 704ms >= patience 700ms: complete: day, month, year"
 700,vosk,clips/stammered/D1_v2.wav,stammered,D1,date_of_birth,8747,9440,ended,693,"silence 704ms >= patience 700ms: complete: day, month, year"
-700,vosk,clips/stammered/D1_v3.wav,stammered,D1,date_of_birth,8629,,no_end,,
+700,vosk,clips/stammered/D1_v3.wav,stammered,D1,date_of_birth,8629,9344,ended,715,"silence 704ms >= patience 700ms: complete: day, month, year"
 700,vosk,clips/fluent/D2.wav,fluent,D2,date_of_birth,4240,4960,ended,720,"silence 704ms >= patience 700ms: complete: day, month, year"
 700,vosk,clips/stammered/D2_v1.wav,stammered,D2,date_of_birth,5526,6240,ended,714,"silence 704ms >= patience 700ms: complete: day, month, year"
 700,vosk,clips/stammered/D2_v2.wav,stammered,D2,date_of_birth,6472,7168,ended,696,"silence 704ms >= patience 700ms: complete: day, month, year"
@@ -127,7 +127,7 @@ complete_ms,stt,file,group,line,slot,true_end_ms,end_ms,outcome,wait_ms,reason
 700,vosk,clips/stammered/C2_v1.wav,stammered,C2,confirm,9004,,no_end,,
 700,vosk,clips/stammered/C2_v2.wav,stammered,C2,confirm,9165,9888,ended,723,silence 704ms >= patience 700ms: complete: correction: 8/8 digits
 700,vosk,clips/stammered/C2_v3.wav,stammered,C2,confirm,8174,,no_end,,
-700,vosk,clips/pauses/P_A2.wav,pauses,P_A2,account_number,11100,12160,ended,1060,silence 1056ms >= patience 700ms: complete: 8/8 digits
+700,vosk,clips/pauses/P_A2.wav,pauses,P_A2,account_number,11100,11808,ended,708,silence 704ms >= patience 700ms: complete: 8/8 digits
 700,vosk,clips/pauses/P_A4.wav,pauses,P_A4,account_number,9830,10976,ended,1146,silence 1152ms >= patience 700ms: complete: 8/8 digits
 700,vosk,clips/pauses/P_D1.wav,pauses,P_D1,date_of_birth,8330,9056,ended,726,"silence 704ms >= patience 700ms: complete: day, month, year"
 700,vosk,clips/pauses/P_R1.wav,pauses,P_R1,reason,6310,7008,ended,698,silence 704ms >= patience 700ms: unsure: free text
@@ -135,10 +135,10 @@ complete_ms,stt,file,group,line,slot,true_end_ms,end_ms,outcome,wait_ms,reason
 400,vosk,clips/stammered/A1_v1.wav,stammered,A1,account_number,10743,11456,ended,713,"silence 704ms >= patience 700ms: unsure: 9 digits, expected 8"
 400,vosk,clips/stammered/A1_v2.wav,stammered,A1,account_number,10121,10528,ended,407,silence 416ms >= patience 400ms: complete: 8/8 digits
 400,vosk,clips/stammered/A1_v3.wav,stammered,A1,account_number,10554,10976,ended,422,silence 416ms >= patience 400ms: complete: 8/8 digits
-400,vosk,clips/fluent/A2.wav,fluent,A2,account_number,5029,6176,ended,1147,silence 1152ms >= patience 400ms: complete: 8/8 digits
-400,vosk,clips/stammered/A2_v1.wav,stammered,A2,account_number,7746,8800,ended,1054,silence 1056ms >= patience 400ms: complete: 8/8 digits
-400,vosk,clips/stammered/A2_v2.wav,stammered,A2,account_number,7283,8320,ended,1037,silence 1024ms >= patience 400ms: complete: 8/8 digits
-400,vosk,clips/stammered/A2_v3.wav,stammered,A2,account_number,7689,8800,ended,1111,silence 1120ms >= patience 400ms: complete: 8/8 digits
+400,vosk,clips/fluent/A2.wav,fluent,A2,account_number,5029,5440,ended,411,silence 416ms >= patience 400ms: complete: 8/8 digits
+400,vosk,clips/stammered/A2_v1.wav,stammered,A2,account_number,7746,8160,ended,414,silence 416ms >= patience 400ms: complete: 8/8 digits
+400,vosk,clips/stammered/A2_v2.wav,stammered,A2,account_number,7283,7712,ended,429,silence 416ms >= patience 400ms: complete: 8/8 digits
+400,vosk,clips/stammered/A2_v3.wav,stammered,A2,account_number,7689,8096,ended,407,silence 416ms >= patience 400ms: complete: 8/8 digits
 400,vosk,clips/fluent/A3.wav,fluent,A3,account_number,7192,,no_end,,
 400,vosk,clips/stammered/A3_v1.wav,stammered,A3,account_number,8287,,no_end,,
 400,vosk,clips/stammered/A3_v2.wav,stammered,A3,account_number,8495,,no_end,,
@@ -150,7 +150,7 @@ complete_ms,stt,file,group,line,slot,true_end_ms,end_ms,outcome,wait_ms,reason
 400,vosk,clips/fluent/D1.wav,fluent,D1,date_of_birth,5994,6400,ended,406,"silence 416ms >= patience 400ms: complete: day, month, year"
 400,vosk,clips/stammered/D1_v1.wav,stammered,D1,date_of_birth,7798,8224,ended,426,"silence 416ms >= patience 400ms: complete: day, month, year"
 400,vosk,clips/stammered/D1_v2.wav,stammered,D1,date_of_birth,8747,9152,ended,405,"silence 416ms >= patience 400ms: complete: day, month, year"
-400,vosk,clips/stammered/D1_v3.wav,stammered,D1,date_of_birth,8629,,no_end,,
+400,vosk,clips/stammered/D1_v3.wav,stammered,D1,date_of_birth,8629,9056,ended,427,"silence 416ms >= patience 400ms: complete: day, month, year"
 400,vosk,clips/fluent/D2.wav,fluent,D2,date_of_birth,4240,4672,ended,432,"silence 416ms >= patience 400ms: complete: day, month, year"
 400,vosk,clips/stammered/D2_v1.wav,stammered,D2,date_of_birth,5526,5952,ended,426,"silence 416ms >= patience 400ms: complete: day, month, year"
 400,vosk,clips/stammered/D2_v2.wav,stammered,D2,date_of_birth,6472,6880,ended,408,"silence 416ms >= patience 400ms: complete: day, month, year"
@@ -171,7 +171,7 @@ complete_ms,stt,file,group,line,slot,true_end_ms,end_ms,outcome,wait_ms,reason
 400,vosk,clips/stammered/C2_v1.wav,stammered,C2,confirm,9004,,no_end,,
 400,vosk,clips/stammered/C2_v2.wav,stammered,C2,confirm,9165,9600,ended,435,silence 416ms >= patience 400ms: complete: correction: 8/8 digits
 400,vosk,clips/stammered/C2_v3.wav,stammered,C2,confirm,8174,,no_end,,
-400,vosk,clips/pauses/P_A2.wav,pauses,P_A2,account_number,11100,12160,ended,1060,silence 1056ms >= patience 400ms: complete: 8/8 digits
+400,vosk,clips/pauses/P_A2.wav,pauses,P_A2,account_number,11100,11520,ended,420,silence 416ms >= patience 400ms: complete: 8/8 digits
 400,vosk,clips/pauses/P_A4.wav,pauses,P_A4,account_number,9830,10976,ended,1146,silence 1152ms >= patience 400ms: complete: 8/8 digits
 400,vosk,clips/pauses/P_D1.wav,pauses,P_D1,date_of_birth,8330,8768,ended,438,"silence 416ms >= patience 400ms: complete: day, month, year"
 400,vosk,clips/pauses/P_R1.wav,pauses,P_R1,reason,6310,7008,ended,698,silence 704ms >= patience 700ms: unsure: free text

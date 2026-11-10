@@ -4,7 +4,8 @@ from pathlib import Path
 
 from eval.run import Clip, load_clips
 from eval.sweep import (
-    curve, meets_targets, misses_table, patient_points, summary_table, sweep, vosk_waits_longer_table, write_outputs,
+    comparison_table, curve, meets_targets, misses_table, patient_group_table, patient_points, summary_table, sweep,
+    vosk_waits_longer_table, write_outputs,
 )
 from tests.test_run import frames, ms, write_tiny_manifest
 
@@ -158,3 +159,20 @@ def test_results_md_shows_oracle_and_vosk_side_by_side(tmp_path: Path) -> None:
     with open(out / "patient_clips.csv", newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     assert [r["stt"] for r in rows] == ["oracle", "oracle", "vosk", "vosk"]
+
+
+def test_no_end_and_prompt_counts_are_shown_not_hidden() -> None:
+    # A fluent clip Vosk mishears (7/8 digits): no END, so it drops out of the wait stats,
+    # but it must still show up as "1/1 no END" and "1/1 prompted".
+    fluent = fluent_account_clip()
+    misheard = with_vosk_text(fluent, "my account number is ford five two seven three six one oh")
+    [oracle] = patient_points([fluent], [700])
+    [vosk] = patient_points([misheard], [700], stt="vosk")
+    assert oracle.prompted == frozenset() and vosk.prompted == frozenset({"f.wav"})
+
+    table = patient_group_table(vosk)
+    assert "| no END | prompted |" in table
+    assert "| fluent | 1 | 0% (0/1) | 1/1 | 1/1 | - | - |" in table
+    summary = comparison_table(sweep([fluent], [700]), [oracle, vosk])
+    assert "fluent no END |" in summary
+    assert "| 0/1 |" in summary and "| 1/1 |" in summary

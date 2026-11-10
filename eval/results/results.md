@@ -8,14 +8,14 @@ The Patient runs twice on the same audio: once on oracle transcripts, once on Vo
 
 ## Summary
 
-| endpointer | stammered cut-off (target < 5%) | fluent median wait (ms, target ≤ 900) | fluent p95 wait (ms) | fluent cut-off | pauses cut-off | both targets met |
-| --- | ---: | ---: | ---: | ---: | ---: | :---: |
-| Baseline 700 ms | 100% (30/30) | 710 | 722 | 0% (0/10) | 100% (4/4) | ❌ |
-| Baseline 3000 ms (first to meet the stammered target) | 0% (0/30) | 3014 | 3026 | 0% (0/10) | 0% (0/4) | ❌ |
-| **Patient (oracle transcripts), complete 700 ms** | 20% (6/30) | 710 | 722 | 0% (0/10) | 100% (4/4) | ❌ |
-| **Patient (oracle transcripts), complete 400 ms** | 20% (6/30) | 424 | 707 | 0% (0/10) | 100% (4/4) | ❌ |
-| **Patient (Vosk transcripts), complete 700 ms** | 23% (7/30) | 713 | 978 | 0% (0/10) | 0% (0/4) | ❌ |
-| **Patient (Vosk transcripts), complete 400 ms** | 23% (7/30) | 432 | 975 | 0% (0/10) | 0% (0/4) | ❌ |
+| endpointer | stammered cut-off (target < 5%) | fluent median wait (ms, target ≤ 900) | fluent p95 wait (ms) | fluent no END | fluent cut-off | pauses cut-off | both targets met |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| Baseline 700 ms | 100% (30/30) | 710 | 722 | 0/10 | 0% (0/10) | 100% (4/4) | ❌ |
+| Baseline 3000 ms (first to meet the stammered target) | 0% (0/30) | 3014 | 3026 | 0/10 | 0% (0/10) | 0% (0/4) | ❌ |
+| **Patient (oracle transcripts), complete 700 ms** | 20% (6/30) | 710 | 722 | 0/10 | 0% (0/10) | 100% (4/4) | ❌ |
+| **Patient (oracle transcripts), complete 400 ms** | 20% (6/30) | 424 | 707 | 0/10 | 0% (0/10) | 100% (4/4) | ❌ |
+| **Patient (Vosk transcripts), complete 700 ms** | 23% (7/30) | 707 | 722 | 1/10 | 0% (0/10) | 0% (0/4) | ❌ |
+| **Patient (Vosk transcripts), complete 400 ms** | 23% (7/30) | 425 | 708 | 1/10 | 0% (0/10) | 0% (0/4) | ❌ |
 
 ![Patient vs the fixed-threshold curve](sweep.png)
 
@@ -23,35 +23,35 @@ The Patient runs twice on the same audio: once on oracle transcripts, once on Vo
 
 ### Patient (oracle transcripts), complete 700 ms
 
-| group | clips | cut-off rate | no end | wait median (ms) | wait p95 (ms) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| fluent | 10 | 0% (0/10) | 0 | 710 | 722 |
-| stammered | 30 | 20% (6/30) | 0 | 714 | 724 |
-| pauses | 4 | 100% (4/4) | 0 | - | - |
+| group | clips | cut-off rate | no END | prompted | wait median (ms) | wait p95 (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| fluent | 10 | 0% (0/10) | 0/10 | 0/10 | 710 | 722 |
+| stammered | 30 | 20% (6/30) | 0/30 | 0/30 | 714 | 724 |
+| pauses | 4 | 100% (4/4) | 0/4 | 0/4 | - | - |
 
 ### Patient (oracle transcripts), complete 400 ms
 
-| group | clips | cut-off rate | no end | wait median (ms) | wait p95 (ms) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| fluent | 10 | 0% (0/10) | 0 | 424 | 707 |
-| stammered | 30 | 20% (6/30) | 0 | 426 | 706 |
-| pauses | 4 | 100% (4/4) | 0 | - | - |
+| group | clips | cut-off rate | no END | prompted | wait median (ms) | wait p95 (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| fluent | 10 | 0% (0/10) | 0/10 | 0/10 | 424 | 707 |
+| stammered | 30 | 20% (6/30) | 0/30 | 0/30 | 426 | 706 |
+| pauses | 4 | 100% (4/4) | 0/4 | 0/4 | - | - |
 
 ### Patient (Vosk transcripts), complete 700 ms
 
-| group | clips | cut-off rate | no end | wait median (ms) | wait p95 (ms) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| fluent | 10 | 0% (0/10) | 1 | 713 | 978 |
-| stammered | 30 | 23% (7/30) | 6 | 714 | 1734 |
-| pauses | 4 | 0% (0/4) | 0 | 893 | 1133 |
+| group | clips | cut-off rate | no END | prompted | wait median (ms) | wait p95 (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| fluent | 10 | 0% (0/10) | 1/10 | 1/10 | 707 | 722 |
+| stammered | 30 | 23% (7/30) | 5/30 | 5/30 | 714 | 1733 |
+| pauses | 4 | 0% (0/4) | 0/4 | 0/4 | 717 | 1083 |
 
 ### Patient (Vosk transcripts), complete 400 ms
 
-| group | clips | cut-off rate | no end | wait median (ms) | wait p95 (ms) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| fluent | 10 | 0% (0/10) | 1 | 432 | 975 |
-| stammered | 30 | 23% (7/30) | 6 | 427 | 1734 |
-| pauses | 4 | 0% (0/4) | 0 | 879 | 1133 |
+| group | clips | cut-off rate | no END | prompted | wait median (ms) | wait p95 (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| fluent | 10 | 0% (0/10) | 1/10 | 1/10 | 425 | 708 |
+| stammered | 30 | 23% (7/30) | 5/30 | 5/30 | 426 | 1733 |
+| pauses | 4 | 0% (0/4) | 0/4 | 0/4 | 568 | 1079 |
 
 ## Every Patient miss
 
@@ -71,7 +71,6 @@ The Patient runs twice on the same audio: once on oracle transcripts, once on Vo
 | clips/stammered/A3_v1.wav | Vosk | no_end | 700, 400 | - |
 | clips/stammered/A3_v2.wav | Vosk | no_end | 700, 400 | - |
 | clips/stammered/A3_v3.wav | Vosk | no_end | 700, 400 | - |
-| clips/stammered/D1_v3.wav | Vosk | no_end | 700, 400 | - |
 | clips/stammered/R1_v1.wav | Vosk | cut_off | 700, 400 | silence 704ms >= patience 700ms: unsure: free text |
 | clips/stammered/R2_v1.wav | Vosk | cut_off | 700, 400 | silence 1728ms >= patience 1700ms: unsure: free text (+1000 repetition) |
 | clips/stammered/R2_v2.wav | Vosk | cut_off | 700, 400 | silence 704ms >= patience 700ms: unsure: free text |
@@ -92,9 +91,7 @@ or at the end of the clip when the Patient never ended.
 
 | clip | complete_ms | Baseline 700 wait (ms) | Patient oracle wait (ms) | Patient Vosk wait (ms) | Patient Vosk, why | Vosk transcript at that moment |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
-| clips/fluent/A2.wav | 700 | 699 | 699 | 1147 | silence 1152ms >= patience 700ms: complete: 8/8 digits | `it's seven three zero nine one one six four` |
 | clips/fluent/A3.wav | 700 | 712 | 712 | no_end | never ended; words INCOMPLETE: ends with 'a'; PROMPT at 6024 ms after the true end | `yes in my account number s two six zero four and nine nine one a` |
-| clips/fluent/A2.wav | 400 | 699 | 411 | 1147 | silence 1152ms >= patience 400ms: complete: 8/8 digits | `it's seven three zero nine one one six four` |
 | clips/fluent/A3.wav | 400 | 712 | 424 | no_end | never ended; words INCOMPLETE: ends with 'a'; PROMPT at 6024 ms after the true end | `yes in my account number s two six zero four and nine nine one a` |
 
 ## Caveats
