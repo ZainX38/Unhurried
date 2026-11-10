@@ -118,11 +118,13 @@ class Dialogue:
         if self.state is State.ACCOUNT:
             digits = extract_digits(text)
 
-            if len(digits) == ACCOUNT_DIGITS:
+            # 8 or more: read back everything heard
+            # Extra digits are usually a stammered repeat ("four four five…"); the caller can hear it and correct it.
+            if len(digits) >= ACCOUNT_DIGITS:
                 self.pending = digits
                 return self._read_back_account()
 
-            # Wrong length: don't read back a number we know is wrong.
+            # Too few: don't read back a number we know is incomplete.
             return self._failed(ASK_ACCOUNT_AGAIN, OFFER_KEYPAD_ACCOUNT, "account_number")
 
         if self.state is State.CONFIRM_ACCOUNT:
