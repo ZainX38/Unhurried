@@ -3,6 +3,10 @@ import { openCall, type Call, type Decision, type Mode, type ServerEvent } from 
 import { BotVoice } from "./voice";
 import { SAMPLE_SCRIPT, loadScript, runSampleCaller, type LoadedTurn } from "./sampleCaller";
 import { Keypad } from "./Keypad";
+import { startMic } from "./mic";
+
+// Keep the mic muted this long after the bot stops, for the speaker tail and room echo.
+const MUTE_TAIL_MS = 300;
 
 type Source = "sample" | "mic";
 
@@ -82,6 +86,8 @@ export default function App() {
   const abort = useRef<AbortController | null>(null);
   const states = useRef(0);
   const done = useRef(false);
+  const stopMic = useRef<(() => void) | null>(null);
+  const quietSince = useRef(0); // when the bot last stopped speaking
 
   useEffect(() => {
     loadScript(SAMPLE_SCRIPT).then(setScript, (err: Error) =>
@@ -91,6 +97,8 @@ export default function App() {
   }, []);
 
   function tearDown() {
+    stopMic.current?.();
+    stopMic.current = null;
     abort.current?.abort();
     voice.current?.cancel();
     call.current?.close();
@@ -113,7 +121,10 @@ export default function App() {
 
     // Created here, inside the click, so the browser allows sound.
     const ctx = new AudioContext();
-    const v = new BotVoice(setBotSpeaking);
+    const v = new BotVoice((speaking) => {
+      setBotSpeaking(speaking);
+      if (!speaking) quietSince.current = performance.now();
+    });
     const ac = new AbortController();
     const c = openCall(
       m,
@@ -136,6 +147,20 @@ export default function App() {
       await c.ready;
     } catch (err) {
       hangUp((err as Error).message);
+      return;
+    }
+    if (s === "mic") {
+      // Frames are dropped (not sent) while the bot speaks, so its voice can't become a Turn.
+      const muted = () => v.speaking || performance.now() - quietSince.current < MUTE_TAIL_MS;
+      try {
+        const stop = await startMic(ctx, (f) => {
+          if (!muted()) c.sendPcm(f);
+        });
+        if (ac.signal.aborted) stop(); // hung up while the permission prompt was open
+        else stopMic.current = stop;
+      } catch (err) {
+        hangUp(`Microphone unavailable: ${(err as Error).message}`);
+      }
       return;
     }
     if (s === "sample" && script) {
@@ -222,8 +247,14 @@ export default function App() {
             Play sample caller (recorded, with a stammer)
           </label>
           <label>
-            <input type="radio" name="source" checked={source === "mic"} disabled />
-            My microphone (next step)
+            <input
+              type="radio"
+              name="source"
+              checked={source === "mic"}
+              onChange={() => setSource("mic")}
+              disabled={view.inCall}
+            />
+            My microphone (use headphones)
           </label>
         </fieldset>
         {view.inCall ? (
