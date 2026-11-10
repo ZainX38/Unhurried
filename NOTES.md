@@ -349,3 +349,93 @@ The next stage is adding an STT, which will be Vosk as it can run locally. The n
 
 Vosk check (3 clips): digits come out as words, with 0 as “zero”. Homophones (“for”, “to”) lose digits, so a complete number can look incomplete. The burst before a block was transcribed as an extra “four”. The final text can rewrite the partial (“fourteenth” → “fortieth”), so the transcript isn’t only growing. Vosk split segments mid-block, confirming that segment ends must never end a turn. Measured delay was 0–330 ms, matching the 300 ms oracle guess. Accuracy on free text is poor (“calling about” → “pulling a boat”). Decisions: count digit homophones only next to other digits; recognise a day by its ordinal form; slot grammars as a next step.
 
+### Ticket 6: Speech-to-text with Vosk (Mon 9 Nov)
+
+- **What it is:** real speech-to-text. Vosk (offline, `vosk-model-small-en-us-0.15`) streams the same 32 ms frames the VAD sees, and its text replaces the oracle transcript in the harness.
+- **Claude wrote:** a throwaway 3-clip check script, then the STT adapter (`src/unhurried/stt.py`), the model download script, and the `--stt {oracle,vosk}` options in `run.py` / `sweep.py` (`/implement`).
+- **I did:** read the 3-clip output and made the decisions; changed `completeness.py` to handle what Vosk actually outputs (TDD).
+- **Skills used:** plan mode, `/implement`, `/tdd`, `/code-review`.
+
+**Step 1: 3-clip check (before wiring anything in)**
+
+- Digits come out as words, with 0 as "zero" (never "oh").
+- **Homophones lose digits:** 4 → "for", 2 → "to". A complete number can look incomplete.
+- **The burst before a block was transcribed as a real word** ("four" in A1, "he" in D1), adding an extra digit.
+- **The final text can rewrite the partial:** "fourteenth" → "fortieth". The transcript doesn't only grow; it can change, and get worse.
+- **Vosk splits segments mid-block** (1.2 s into A1's block). If a segment end were treated as "turn over", Vosk would become a second, impatient endpointer.
+- Nothing was invented inside the silence itself (only a brief "he definitely" partial that vanished after 224 ms).
+- "um" became "and", "I'm" became "i am". Free-text accuracy is poor ("calling about" → "pulling a boat").
+- Repetitions: not testable with this data (the clips contain none).
+
+**Decisions**
+
+- **Transcript = all finished segments joined + the current partial.** Using the partial alone loses words when Vosk splits mid-block. Segment ends never end a turn (ADR 0002).
+- `--stt vosk` runs oracle **and** Vosk side by side; each clip is transcribed once and reused.
+- **Count digit homophones** ("for" → 4, "to"/"too" → 2, "won" → 1, "ate" → 8) **only next to other digits**, so "i'm looking for" is still a dangling ending. This reverses my Ticket 4 decision, because real STT output showed it was needed.
+- **Recognise a day by its ordinal form** (-th/-st/-nd/-rd), not its value. Completeness asks "has the caller finished saying a date?"; validity is checked by the read-back. *(to finish Tue)*
+- No spliced repetitions; I may record one real repetition take instead.
+
+**Results**
+
+| Patient | Stammered cut-off | Fluent median | Fluent p95 | Pauses cut-off |
+| --- | --- | --- | --- | --- |
+| Oracle, complete 700 | 6/30 | 710 ms | 722 ms | 4/4 |
+| **Vosk, complete 700** | **7/30** | **713 ms** | **978 ms** | **0/4** |
+| Oracle, complete 400 | 6/30 | 424 ms | 707 ms | 4/4 |
+| **Vosk, complete 400** | **7/30** | **432 ms** | **975 ms** | **0/4** |
+
+- **Pauses fixed:** with real words, all 4 thinking-pause takes are no longer cut off.
+- **Fluent median unchanged** (target ≤ 900 ms still met); **fluent p95 rose about 250 ms**, as I predicted: misheard digits make complete answers look incomplete.
+- **Measured STT delay:** median 181 ms (range −61 to 1147 ms), so my guessed 300 ms oracle delay was reasonable.
+
+**Misses with Vosk, and what they mean**
+
+- **A2 (bug, fixing Tue):** "…six for" ended on a homophone. My dangling-word check ran before the homophone count, so "for" was read as "unfinished" instead of 4. Two of my rules interacted badly; fix = count digits first.
+- **D1_v3 (fixing Tue):** "fortieth" isn't recognised as a day yet.
+- **A3 (honest):** "eight" → "a". Ends in a PROMPT at 6 s: the safe failure.
+- **C2_v1 (honest):** "for or five to" gives 7/8. Mapping "or" to 4 would be too broad.
+- **C1 (honest, new finding):** Vosk transcribed the stammer's burst as "yeah" → COMPLETE → the turn ended during the block. **STT can turn the start of a stammer into a whole word that looks like a finished answer.**
+- **R2 (honest):** "set up" doesn't signal unfinished.
+
+
+**Follow-up fixes (Claude implemented from my decisions; I reviewed the diff)**
+
+- **Rule-order bug (A2):** completeness now counts digits first, including homophones next to other digits. A trailing homophone that counts as a digit no longer triggers the dangling-word rule. "…six for" → 8/8 → COMPLETE.
+- **Ordinal day by form (D1):** a word ending in -th/-st/-nd/-rd counts as a day, so "the fortieth of march nineteen ninety nine" → COMPLETE. The read-back checks validity.
+- **Claude caught an ambiguity in my rule:** "any -th word before the month" would have matched "bir**th**" ("my date of birth is march…" would wrongly be COMPLETE). The rule now only looks at the word right before the month (or before "of" + month), with a test for that case.
+- **New "no END / prompted" column** in results.md, so fluent clips that only end with a PROMPT aren't hidden from the wait stats.
+- Checks: all tests green; Baseline outputs byte-identical; oracle Patient rows unchanged.
+
+**Final results (after fixes)**
+
+| Patient | Stammered cut-off | Fluent median | Fluent p95 | Fluent no END | Pauses cut-off |
+| --- | --- | --- | --- | --- | --- |
+| Oracle, 700 | 6/30 | 710 ms | 722 ms | 0/10 | 4/4 |
+| Oracle, 400 | 6/30 | 424 ms | 707 ms | 0/10 | 4/4 |
+| **Vosk, 700** | **7/30** | **707 ms** | **722 ms** | **1/10** | **0/4** |
+| **Vosk, 400** | **7/30** | **425 ms** | **708 ms** | **1/10** | **0/4** |
+
+- With real STT, fluent callers pay almost nothing extra: the p95 rise (978 ms) was almost entirely the A2 bug.
+- The one real fluent cost: **A3, 1 in 10 fluent callers prompted** ("eight" heard as "a").
+- Every no-END clip was prompted, never hung up on.
+
+**Misses that remain (all honest, not patched)**
+
+- **A3 (×4, Vosk):** "eight" → "a" (dangling) → INCOMPLETE → PROMPT at 6 s. Safe failure.
+- **C2_v1, C2_v3 (Vosk):** "for or five to": "or" isn't counted, so 7/8 → PROMPT.
+- **C1 (×3):** Vosk turns the burst into "yeah" → COMPLETE → cut off during the block. (Oracle also cuts these off: nothing heard on a confirm slot.)
+- **R1_v1 (Vosk only):** the burst became "what" → "i'm calling about what" no longer ends on a dangling word → timed like free text → cut off.
+- **R2 (×3, both):** "i want to set up": free text that doesn't signal "unfinished".
+
+**Key finding: STT garbles the stammer itself**
+
+- Vosk turns the short burst before a block into a real word, and which word is unpredictable:
+  - "my" + real "my" → **"my my"** → the repetition bonus fires for the first time on real data → **saves** R1_v2 and R1_v3
+  - **"what"** → removes the dangling ending → **cuts off** R1_v1
+  - **"yeah"** → looks like a finished answer → **cuts off** C1
+- So word-based rules depend partly on luck in how STT hears a stammer. The better next step is an **acoustic detector** that recognises the burst-then-silence pattern directly in the audio, trained on real stammered speech (e.g. SEP-28k labels). Hiya1's timing-only version was too crude, which is why I left it out.
+
+**Latency**
+
+- Measured STT delay: **median 181 ms**, close to my guessed 300 ms oracle delay.
+- The 1147 ms maximum was A2's final rewriting "for" → "four", which no longer affects the Patient's decision. Caveat updated in results.md.
