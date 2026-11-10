@@ -1,20 +1,22 @@
 /* ---------- Tokens ----------
-   Contrast notes are against --card (white / #182020); every text pair is AA or better. */
+   Light contrast notes are against --card (#ffffff) unless noted; every text pair is AA or better. */
 :root {
-  --bg: #f6f7f7;
+  --bg: #f5f5f7;
   --card: #ffffff;
-  --border: #e1e5e4;
-  --fg: #172221;           /* 15.9:1 */
-  --muted: #586563;        /* 6.0:1, also the radio ring (non-text 3:1+) */
-  --accent: #0d6b69;       /* 6.3:1; white on it 6.3:1 */
+  --border: #d2d2d7;
+  --fg: #1d1d1f;           /* 16.8:1 */
+  --muted: #6e6e73;        /* 5.1:1 on card, 4.7:1 on bg; also the radio ring (non-text 3:1+) */
+  --accent: #0071e3;       /* button fill, silence bar; white on it 4.7:1 */
   --accent-fg: #ffffff;
-  --accent-tint: #e5f1f0;  /* accent on tint 5.5:1 */
-  --accent-hover: #0a5755;
-  --success: #1b6b3a;      /* 6.6:1 */
-  --warning: #8a5200;      /* 5.9:1 */
-  --danger: #b0261d;       /* 6.6:1 */
-  --track: #e6eaea;
-  --shadow: 0 1px 2px rgb(16 32 31 / 0.04), 0 4px 16px rgb(16 32 31 / 0.04);
+  --accent-hover: #0066cc;
+  --accent-tint: #e8f1fb;  /* selected side of the toggle */
+  --accent-text: #0066cc;  /* text on the tint 4.9:1; links */
+  --focus: #0071e3;        /* focus ring, 4.7:1 on card */
+  --success: #1b6b3a;      /* 6.6:1 (Apple's #248a3d fails AA for small text) */
+  --warning: #b25000;      /* 5.2:1 */
+  --danger: #d70015;       /* 5.4:1 */
+  --track: #e8e8ed;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.04);
   --radius: 12px;
 
   --text-sm: 14px;
@@ -32,21 +34,24 @@
   background: var(--bg);
 }
 @media (prefers-color-scheme: dark) {
+  /* Dark contrast notes are against --card (#1c1c1e) unless noted. */
   :root {
-    --bg: #101514;
-    --card: #182020;
-    --border: #2b3635;
-    --fg: #e7eeed;         /* 13.6:1 */
-    --muted: #a3b1af;      /* 7.3:1 */
-    --accent: #5fc6bf;     /* 8.4:1; dark text on it 9:1 */
-    --accent-fg: #0b1918;
-    --accent-tint: #1d3634;/* accent on tint 6.6:1 */
-    --accent-hover: #7dd5cf;
-    --success: #7fd59d;
-    --warning: #efc164;
-    --danger: #ff8f84;
-    --track: #2b3635;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 4px 16px rgb(0 0 0 / 0.2);
+    --bg: #000000;
+    --card: #1c1c1e;
+    --border: #38383a;
+    --fg: #f5f5f7;         /* 16.0:1 */
+    --muted: #98989d;      /* 5.9:1 */
+    --accent: #0071e3;     /* button fill; white on it 4.7:1 (#0a84ff with white is only 3.65:1) */
+    --accent-fg: #ffffff;
+    --accent-hover: #0077ed;
+    --accent-tint: #0a2540;
+    --accent-text: #409cff;/* 6.0:1 on card, 5.5:1 on tint */
+    --focus: #409cff;      /* focus ring, 6.0:1 on card */
+    --success: #30d158;    /* 8.4:1 */
+    --warning: #ff9f0a;    /* 8.3:1 */
+    --danger: #ff453a;     /* 5.0:1 */
+    --track: #2c2c2e;
+    --shadow: 0 1px 1px rgb(0 0 0 / 0.08); /* almost none: card colour and border carry the edge */
     color-scheme: dark;
   }
 }
@@ -62,7 +67,7 @@
 body { margin: 0; background: var(--bg); }
 h1, h2, p { margin: 0; }
 ::selection { background: var(--accent); color: var(--accent-fg); }
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 legend { padding: 0; }
 
@@ -72,12 +77,29 @@ main { max-width: 1200px; margin: 0 auto; padding: 32px 16px 64px; }
 h1 { font-size: var(--text-xl); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
 .tagline { margin-top: 4px; color: var(--muted); }
 
-/* ---------- Layout: one column, two from 1024 px ---------- */
+/* ---------- Layout ----------
+   One column in DOM order (Caller, Line, Why, Northwind, Keypad, Heard), so reading and Tab order match.
+   From 1024 px the same cards sit in two columns via grid areas. */
 .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
-.col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 @media (min-width: 1024px) {
-  .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
-  .col { gap: 24px; }
+  .layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start;
+    grid-template-areas:
+      "caller line"
+      "caller why"
+      "bot    why"
+      "keypad why"
+      "keypad heard"
+      "keypad .";
+    grid-template-rows: auto auto auto auto auto 1fr;
+    /* Cards span several short rows so each column stacks on its own, like two flex columns */
+  }
+  .call-card { grid-area: caller; }
+  .line-card { grid-area: line; }
+  .why { grid-area: why; }
+  .bot-card { grid-area: bot; }
+  .keypad { grid-area: keypad; }
+  .heard-card { grid-area: heard; }
 }
 
 .card {
@@ -108,6 +130,10 @@ button.call:disabled { background: var(--bg); color: var(--muted); border-color:
 button.hangup { color: var(--danger); border: 2px solid var(--danger); }
 button.hangup:hover { background: var(--bg); }
 .status { margin-top: 12px; min-height: 1.5em; font-size: var(--text-sm); color: var(--muted); }
+/* Caller card: bottom padding matches the top; an empty status line takes no room (it stays in the DOM as a live region) */
+.call-card { padding-bottom: 20px; }
+.status:empty { margin-top: 0; min-height: 0; }
+@media (max-width: 480px) { .call-card { padding-bottom: 16px; } }
 
 /* ---------- Caller: custom-styled real radios ---------- */
 .source { margin-bottom: 16px; }
@@ -130,9 +156,9 @@ button.hangup:hover { background: var(--bg); }
   border-radius: 999px; cursor: pointer; font-size: var(--text-lg); color: var(--muted);
 }
 .segmented label:hover { color: var(--fg); }
-.segmented label.chosen { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+.segmented label.chosen { background: var(--accent-tint); color: var(--accent-text); font-weight: 600; }
 .segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
-.segmented label:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+.segmented label:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 .mode-hint { margin-top: 12px; color: var(--muted); }
 
 /* ---------- Why it's waiting ----------
@@ -188,7 +214,7 @@ button.hangup:hover { background: var(--bg); }
 .keys { display: grid; grid-template-columns: repeat(3, minmax(44px, 1fr)); gap: 8px; max-width: 18rem; }
 .keys button { min-height: 48px; padding: 8px 0; font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
 .keys button:hover:not(:disabled) { background: var(--bg); }
-.keys button.send { font-size: var(--text-md); color: var(--accent); border-color: var(--accent); }
+.keys button.send { font-size: var(--text-md); color: var(--accent-text); border-color: var(--accent-text); }
 .keys button.send:hover:not(:disabled) { background: var(--accent-tint); }
 .keys button.send:disabled { color: var(--muted); border-color: var(--border); }
 .keys button:not(.send) { font-size: var(--text-lg); }

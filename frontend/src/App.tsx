@@ -206,149 +206,146 @@ export default function App() {
         <p className="tagline">A phone line that doesn't cut off callers who stammer.</p>
       </header>
 
+      {/* DOM order = reading and Tab order on one column; desktop places these in two columns with grid areas */}
       <div className="layout">
-        <div className="col">
-          <section className="card call-card" aria-label="Call controls">
-            <fieldset className="source">
-              <legend className="card-label">Caller</legend>
-              <label>
-                <input
-                  type="radio"
-                  name="source"
-                  checked={source === "sample"}
-                  onChange={() => setSource("sample")}
-                  disabled={view.inCall}
-                />
-                <span>Play sample caller (recorded, with a stammer)</span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="source"
-                  checked={source === "mic"}
-                  onChange={() => setSource("mic")}
-                  disabled={view.inCall}
-                />
-                <span>My microphone (use headphones)</span>
-              </label>
-            </fieldset>
-            {view.inCall ? (
-              <button className="big hangup" onClick={() => hangUp()}>
-                Hang up
-              </button>
-            ) : (
-              <button
-                className="big call"
-                onClick={() => void startCall(mode, source)}
-                disabled={source === "sample" && !script}
-              >
-                Call Northwind Energy
-              </button>
-            )}
-            <p className="status" role="status">
-              {view.status}
-              {view.turnLabel && <> · {view.turnLabel}</>}
-            </p>
-          </section>
+        <section className="card call-card" aria-label="Call controls">
+          <fieldset className="source">
+            <legend className="card-label">Caller</legend>
+            <label>
+              <input
+                type="radio"
+                name="source"
+                checked={source === "sample"}
+                onChange={() => setSource("sample")}
+                disabled={view.inCall}
+              />
+              <span>Play sample caller (recorded, with a stammer)</span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="source"
+                checked={source === "mic"}
+                onChange={() => setSource("mic")}
+                disabled={view.inCall}
+              />
+              <span>My microphone (use headphones)</span>
+            </label>
+          </fieldset>
+          {view.inCall ? (
+            <button className="big hangup" onClick={() => hangUp()}>
+              Hang up
+            </button>
+          ) : (
+            <button
+              className="big call"
+              onClick={() => void startCall(mode, source)}
+              disabled={source === "sample" && !script}
+            >
+              Call Northwind Energy
+            </button>
+          )}
+          <p className="status" role="status">
+            {view.status}
+            {view.turnLabel && <> · {view.turnLabel}</>}
+          </p>
+        </section>
 
-          <section className="card" aria-labelledby="bot-h">
-            <h2 id="bot-h" className="card-label">Northwind Energy</h2>
-            {/* column-reverse keeps the scroll pinned to the newest line, no script needed */}
-            <div className="bot-scroll" tabIndex={0} aria-labelledby="bot-h">
-              {view.botLines.length === 0 && <p className="empty">The bot's lines appear here.</p>}
-              <ol className="bot-lines" aria-live="polite">
-                {view.botLines.map((line, i) => (
-                  <li key={i}>{line}</li>
-                ))}
-              </ol>
+        <section className="card line-card">
+          <fieldset className="mode" aria-describedby="mode-hint">
+            <legend className="card-label">Line</legend>
+            <div className="segmented">
+              {(["baseline", "patient"] as Mode[]).map((m) => (
+                <label key={m} className={mode === m ? "chosen" : ""}>
+                  <input
+                    type="radio"
+                    name="mode"
+                    value={m}
+                    checked={mode === m}
+                    onChange={() => chooseMode(m)}
+                  />
+                  <span>{MODE_LABEL[m]}</span>
+                </label>
+              ))}
             </div>
-          </section>
+            <p className="mode-hint" id="mode-hint">{MODE_HINT[mode]}</p>
+          </fieldset>
+        </section>
 
-          <Keypad disabled={!view.inCall} onSend={(d) => call.current?.sendKeypad(d)} />
-        </div>
-
-        <div className="col">
-          <section className="card">
-            <fieldset className="mode" aria-describedby="mode-hint">
-              <legend className="card-label">Line</legend>
-              <div className="segmented">
-                {(["baseline", "patient"] as Mode[]).map((m) => (
-                  <label key={m} className={mode === m ? "chosen" : ""}>
-                    <input
-                      type="radio"
-                      name="mode"
-                      value={m}
-                      checked={mode === m}
-                      onChange={() => chooseMode(m)}
+        <section className="card why" aria-labelledby="why-h">
+          <h2 id="why-h" className="card-label">Why it's waiting</h2>
+          <div className="live">
+            {now ? (
+              <>
+                <p className={`action action-${now.action.toLowerCase()}`}>{ACTION_LABEL[now.action]}</p>
+                <p className="reason">{now.reason}</p>
+                {bar && (
+                  <div className="silence-bar" aria-hidden="true">
+                    <div
+                      className={now.action === "END" ? "fill fill-end" : "fill"}
+                      style={{ width: `${bar * 100}%` }}
                     />
-                    <span>{MODE_LABEL[m]}</span>
-                  </label>
-                ))}
-              </div>
-              <p className="mode-hint" id="mode-hint">{MODE_HINT[mode]}</p>
-            </fieldset>
-          </section>
-
-          <section className="card why" aria-labelledby="why-h">
-            <h2 id="why-h" className="card-label">Why it's waiting</h2>
-            <div className="live">
-              {now ? (
-                <>
-                  <p className={`action action-${now.action.toLowerCase()}`}>{ACTION_LABEL[now.action]}</p>
-                  <p className="reason">{now.reason}</p>
-                  {bar && (
-                    <div className="silence-bar" aria-hidden="true">
-                      <div
-                        className={now.action === "END" ? "fill fill-end" : "fill"}
-                        style={{ width: `${bar * 100}%` }}
-                      />
-                    </div>
-                  )}
-                  {botSpeaking && <p className="muted-note">Bot speaking, caller audio muted</p>}
-                </>
-              ) : (
-                <p className="empty">Start a call to see each decision and why.</p>
-              )}
-            </div>
-            <div className="last-stop">
-              {stop ? (
-                <>
-                  <p className={`stop-head action-${stop.action.toLowerCase()}`}>
-                    Last {stop.action === "END" ? "turn end" : "prompt"} at {secs(stop.t_ms)}
-                  </p>
-                  <p className="stop-reason">{stop.reason}</p>
-                </>
-              ) : (
-                <p className="stop-head empty">No turn end or prompt yet.</p>
-              )}
-            </div>
-          </section>
-
-          <section className="card" aria-labelledby="heard-h">
-            <h2 id="heard-h" className="card-label">Heard</h2>
-            <dl className="heard">
-              <div>
-                <dt>Raw</dt>
-                <dd className="transcript raw">{view.transcript || "…"}</dd>
-              </div>
-              <div>
-                <dt>Clean</dt>
-                <dd className="transcript">{view.clean || "…"}</dd>
-              </div>
-            </dl>
-            {view.expectedSlot && <p className="slot">Waiting for {SLOT_LABEL[view.expectedSlot] ?? view.expectedSlot}.</p>}
-            {Object.keys(view.slots).length > 0 && (
-              <dl className="slots">
-                {Object.entries(view.slots).map(([k, val]) => (
-                  <div key={k}>
-                    <dt>{k.replace(/_/g, " ")}</dt>
-                    <dd>{val}</dd>
                   </div>
-                ))}
-              </dl>
+                )}
+                {botSpeaking && <p className="muted-note">Bot speaking, caller audio muted</p>}
+              </>
+            ) : (
+              <p className="empty">Start a call to see each decision and why.</p>
             )}
-          </section>
-        </div>
+          </div>
+          <div className="last-stop">
+            {stop ? (
+              <>
+                <p className={`stop-head action-${stop.action.toLowerCase()}`}>
+                  Last {stop.action === "END" ? "turn end" : "prompt"} at {secs(stop.t_ms)}
+                </p>
+                <p className="stop-reason">{stop.reason}</p>
+              </>
+            ) : (
+              <p className="stop-head empty">No turn end or prompt yet.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="card bot-card" aria-labelledby="bot-h">
+          <h2 id="bot-h" className="card-label">Northwind Energy</h2>
+          {/* column-reverse keeps the scroll pinned to the newest line, no script needed */}
+          <div className="bot-scroll" tabIndex={0} aria-labelledby="bot-h">
+            {view.botLines.length === 0 && <p className="empty">The bot's lines appear here.</p>}
+            <ol className="bot-lines" aria-live="polite">
+              {view.botLines.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        <Keypad disabled={!view.inCall} onSend={(d) => call.current?.sendKeypad(d)} />
+
+        <section className="card heard-card" aria-labelledby="heard-h">
+          <h2 id="heard-h" className="card-label">Heard</h2>
+          <dl className="heard">
+            <div>
+              <dt>Raw</dt>
+              <dd className="transcript raw">{view.transcript || "…"}</dd>
+            </div>
+            <div>
+              <dt>Clean</dt>
+              <dd className="transcript">{view.clean || "…"}</dd>
+            </div>
+          </dl>
+          {view.expectedSlot && <p className="slot">Waiting for {SLOT_LABEL[view.expectedSlot] ?? view.expectedSlot}.</p>}
+          {Object.keys(view.slots).length > 0 && (
+            <dl className="slots">
+              {Object.entries(view.slots).map(([k, val]) => (
+                <div key={k}>
+                  <dt>{k.replace(/_/g, " ")}</dt>
+                  <dd>{val}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </section>
       </div>
     </main>
   );
