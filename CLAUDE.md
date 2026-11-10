@@ -25,7 +25,9 @@ Deadline: submit by Wed 11 Nov 12:30.
 - Build test clips: `uv run python -m eval.make_data`
 - Full evaluation: `uv run python -m eval.sweep --stt vosk`
 - One run: `uv run python -m eval.run --endpointer patient --stt vosk`
-- 
+- Live demo, terminal 1 (backend): `uv run uvicorn unhurried.server:app --port 8000`
+- Live demo, terminal 2 (frontend): `cd frontend && npm install && npm run dev`, then open http://localhost:5173 in Chrome (Vite proxies `/ws` to :8000)
+- Frontend typecheck/build: `cd frontend && npm run build`
 
 ## Rules of the domain
 
