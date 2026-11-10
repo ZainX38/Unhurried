@@ -150,6 +150,11 @@ def dob_status(words: list[str]) -> tuple[Status, str]:
     if month_at is None or not has_year(words[month_at + 1:]):
         missing.append("year")
     if missing:
+        # Month and year heard but no day: probably a misheard day word
+        # ("fortieth"), not a caller who is still talking. Let timing decide,
+        # and let the read-back catch the mistake.
+        if missing == ["day"]:
+            return Status.UNSURE, "missing day (month and year heard)"
         return Status.INCOMPLETE, "missing " + ", ".join(missing)
     return Status.COMPLETE, "day, month, year"
 
