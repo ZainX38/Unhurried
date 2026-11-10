@@ -22,9 +22,9 @@ export function Keypad({ disabled, onSend }: { disabled: boolean; onSend: (digit
   };
 
   return (
-    <section className="keypad" aria-labelledby="keypad-h" onKeyDown={onKey}>
-      <h2 id="keypad-h">Keypad</h2>
-      <p className="hint">Type your account number, or 1 for yes and 2 for no.</p>
+    <section className="card keypad" aria-labelledby="keypad-h" onKeyDown={onKey}>
+      <h2 id="keypad-h" className="card-label">Keypad</h2>
+      <p className="hint">During a call, type your account number, or 1 for yes and 2 for no.</p>
       <output className="typed" aria-live="polite" aria-label="Typed digits">
         {digits || " "}
       </output>
