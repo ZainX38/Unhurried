@@ -41,8 +41,10 @@ From the `grill-with-docs` some decisions were made:
 | Call flow: account number → date of birth → reason, with read-back | Me | This will be the demo flow. It starts from easy (account number), which is predictable to something harder (reason), which is harder to predict, meaning the system must work accurately. This will help me properly test and demo my program |
 | At most one re-prompt, then fallback (keypad or simulated agent) | Me | During research, I read that adults who stammer, often fell on audio loops on calls. To prevent this, my system will ask for one reprompt and if it still doesn't understand keypad fallback and if it doesn't understand again then hand over to a person |
 | Barge-in: if the caller keeps talking, the system stops and treats it as the same turn | Me + Claude | It can happen the system misunderstand a timing and cuts off the user, so in case this happens, I suggested to Claude to make the system stop talking and start again. Claude also suggested to measure how often this happens and account it for the evaluation and cut-off rate stat. This will be the next step. |
-| Real recordings in pieces, Oracle transcripts and Vosk | Claude | This was Claude's test plan to properly evaluate the system |
+| Real recordings in pieces, Oracle transcripts and Vosk | Me + Claude | This was Claude's test plan to properly evaluate the system |
 | Targets: fluent median wait ≤ 900 ms; stammered cut-off rate < 5% | Me | I suggested Claude to use these two values as an evaluation measurement. With these values, I can measure the actual cost of patience. |
+
+The explanation of the results can be seen in [discussion.md](/eval/results/discussion.md)
 
 ---
 

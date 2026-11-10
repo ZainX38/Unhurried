@@ -25,6 +25,7 @@ A fixed timeout can only stop cutting people off by making **everyone** wait lon
 
 ![Patient endpointer vs the fixed-threshold curve](eval/results/sweep.png)
 
+The explanation of the results can be seen in [discussion.md](eval/results/discussion.md)
 - Full tables: [eval/results/results.md](eval/results/results.md)
 
 ## How it works
@@ -89,7 +90,7 @@ Results are written to `eval/results/` (`results.md`, `sweep.png`, per-clip CSVs
 
 - I wasn't able to find anyone who stammered, so blocks (a short burst and then a 1-3s silence) were added to my own fluent recordings rather than recorded from pepole who stammer
 - Vosk's small model is weak on free text, e.g. it confused one time "calling about" with "pulling a boat"
-- The rules were written with these clips in mind
+- The rules were designed and tested on the same clips, with no separate held out set, so the numbers may be optimistic.
 
 The only thing it has got left to do is:
 - Testing it with real people who stammer.
