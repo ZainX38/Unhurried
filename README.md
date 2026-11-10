@@ -24,13 +24,12 @@ A fixed timeout can only stop cutting people off by making **everyone** wait lon
 ![Patient endpointer vs the fixed-threshold curve](eval/results/sweep.png)
 
 - Full tables: [eval/results/results.md](eval/results/results.md)
-- My interpretation: [eval/results/discussion.md](eval/results/discussion.md)
 
 ## How it works
 
 This is a data diagram I made in draw.io, which shows how the system works overall:
 
-![High Level Data Flow Diagram](assets/data_flow.drawio.png)
+![High Level Data Flow Diagram](assets/data_flow.png)
 
 - **Endpointer:** starts at the baseline's 0.7 s, but if the answer is provably unfinished, silence alone never ends the turn. After 6s it says "Take your time" and keeps listening. It never hangs up.
 - **Completeness rules:** read the words against the question asked (8 digits for an account number, day + month + year for a date, yes/no for a confirmation). I decided not to use an LLM as rules take microseconds instead of hundreds of milliseconds, which would add a lot of latency.
@@ -59,10 +58,19 @@ cd frontend && npm install && npm run dev             # terminal 2: frontend
 - Try Baseline (previous model, which cuts off people who stammer)
 - Try Unhurried, which understands behaviour and gives people who stammer time
 
-## Tests
+## Tests and Rebuild the data and re-run the evaluation
+
 ```shell
 uv run pytest
 ```
+
+```shell
+uv run python -m eval.make_data            # builds test clips from eval/data/recordings/ (fixed seed)
+uv run python -m eval.sweep --stt vosk     # Baseline sweep + Unhurried, oracle and Vosk transcripts
+```
+
+Results are written to `eval/results/` (`results.md`, `sweep.png`, per-clip CSVs)
+
 
 ## How to use it
 - **Line**: Baseline is a fixed 0.7 seconds silence timeout like many simple voice systems have or Unhurried, which waits longer only when the words show the answer isn’t finished.
@@ -72,6 +80,16 @@ uv run pytest
   - The same caller runs from the command line: `uv run python scripts/stream_call.py --caller --endpointer baseline eval/data/demo/{A1_stammered,C2,C1,D1,C1,R2}.wav`
 - **My microphone** captures 16 kHz mono PCM16 in the browser (an AudioWorklet resamples it) and mutes outgoing audio while the bot speaks. Use headphones so Vosk understands better.
 - **Keypad** is always available as an alternative to speaking, which solves the looping issue people who stammer were facing.
+
+## Known Limitations
+
+- I wasn't able to find anyone who stammered, so a stammering effect was added to the clips rather than recorded from pepole who stammer
+- Vosk's small model is weak on free text, e.g. it confused one time "calling about" with "pulling a boat"
+- The rules were written with these clips in mind
+
+The only thing it has got left to do is:
+- Testing it with real people who stammer.
+- A detector trained on real stammered speech such as Apple's SEP-28k
 
 
 ## AI Use
