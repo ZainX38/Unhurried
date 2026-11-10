@@ -49,7 +49,7 @@ function reduce(v: View, m: Msg): View {
       if (e.type === "state")
         return {
           ...v, state: e.state, expectedSlot: e.expected_slot, slots: e.slots, transcript: "",
-          status: e.state === "DONE" ? "Call complete." : v.status,
+          status: e.state === "DONE" ? "Call finished." : v.status,
         };
       const d: Decision = { action: e.action, reason: e.reason, t_ms: e.t_ms };
       return { ...v, now: d, lastStop: d.action === "CONTINUE" ? v.lastStop : d };
