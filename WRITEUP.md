@@ -16,6 +16,10 @@ Making the timout longer doesn't fix the problem because then every caller, even
 
 People who stammer who need to use automated phone lines for everyday services like energy, banks and the GP, where an account number or date of birth has to be given by voice. It also helps the businesses running those lines as fewer failed calls and fewer callers handed over to an agent.
 
+## Why voice?
+
+Phone menus, call screeners and helplines are often voice-only and unavoidable. Unhurried's goal is to stop these callers from being excluded and misunderstood.
+
 ## What I built
 
 A working demo energy company line ("Northwind Energy") that asks for an account number, date of birth and reason for calling, with a switch between a standard **Baseline** (fixed 0.7 s timeout) and **Unhurried**.
