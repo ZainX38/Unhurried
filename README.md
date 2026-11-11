@@ -12,7 +12,7 @@ Unhurried minimises those problems, while keeping a good balance of waiting time
 **Also Check:**
 - [WRITEUP.md](WRITEUP.md)
 - [ai.md](ai.md)
-- [Demo Test]()
+- [Demo Test](https://youtu.be/_vCoN_zLRX8)
 
 ## Results
 
