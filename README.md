@@ -9,6 +9,11 @@ In a study of people who stutter [Lea et al., Apple, 2023](https://arxiv.org/pdf
 
 Unhurried minimises those problems, while keeping a good balance of waiting time for fluent and stammered people.
 
+**Also Check:**
+- [WRITEUP.md](WRITEUP.md)
+- [ai.md](ai.md)
+- [Demo Test]()
+
 ## Results
 
 On my test set with my own voice, (with stammers inserted at known points) and using real offline speech recognition (Vosk):

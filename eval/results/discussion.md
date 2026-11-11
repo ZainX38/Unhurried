@@ -33,3 +33,10 @@ Some clips never got an END. These are not cut-offs, and the "no END" column sho
 - **C2_v1, C2_v3:** "four five two" was heard as "for or five to", and "or" doesn't count as a digit, so only 7/8 digits.
 
 In each case the answer looked incomplete, so after 6 s the caller was gently prompted ("Take your time…") instead of cut off or hung up on. Waiting too long is the safe way to fail. The read-back and keypad fallback catch wrong digits after that.
+
+## 5. Caveats
+
+- My own voice, inserted blocks. I recorded 30 clips of myself and inserted blocks (a short burst, then 1–3 s of silence). There are no real stammers, repetitions or prolongations.
+- Small set, no held-out data. 44 clips (10 fluent, 30 stammered, 4 pauses). The rules were designed and tested on the same clips, so the numbers may be optimistic. With 10 fluent clips, the p95 is close to the maximum.
+- The oracle pause row is misleading. The thinking-pause takes have no piece transcripts, so the oracle run treats them as timing only (4/4 cut off). The Vosk row (0/4) is the real result.
+- Speech-to-text delay. The oracle reveals words 300 ms after each piece. The measured Vosk delay was a median of 181 ms, so the oracle is slightly pessimistic.
